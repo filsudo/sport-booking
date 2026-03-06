@@ -11,7 +11,12 @@
   "dependencies": {
     "next": "16.1.6",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "@supabase/supabase-js": "^2.38.0",
+    "zod": "^3.22.4",
+    "date-fns": "^3.0.0",
+    "react-hot-toast": "^2.4.1",
+    "lucide-react": "^0.263.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
