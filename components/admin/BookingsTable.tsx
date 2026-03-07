@@ -137,7 +137,6 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
     try {
       window.localStorage.setItem('sportbook:adminNotes', JSON.stringify(next))
     } catch {
-      // ignore storage errors
     }
   }
 
@@ -147,7 +146,6 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
       list.unshift(`${new Date().toISOString()} • ${message}`)
       window.localStorage.setItem('sportbook:adminActivity', JSON.stringify(list.slice(0, 20)))
     } catch {
-      // ignore storage errors
     }
   }
 

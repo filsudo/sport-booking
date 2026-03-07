@@ -16,7 +16,6 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
   const canUseDom = typeof window !== 'undefined' && typeof document !== 'undefined'
 
   useEffect(() => {
-    // Hydration-safe mount gate for portal rendering.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true)
   }, [])

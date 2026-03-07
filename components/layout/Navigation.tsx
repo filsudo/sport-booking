@@ -50,7 +50,6 @@ export function Header() {
       try {
         window.sessionStorage.setItem('sportbook:scrollToAbout', '1')
       } catch {
-        // ignore storage errors
       }
       router.push(`/#${sectionId}`)
       setMobileOpen(false)
@@ -89,7 +88,6 @@ export function Header() {
       try {
         window.sessionStorage.removeItem('sportbook:scrollToAbout')
       } catch {
-        // ignore storage errors
       }
       return true
     }

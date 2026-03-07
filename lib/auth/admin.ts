@@ -1,6 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabaseServer';
 
-// Check if email is in admin allowlist
 export async function isAdminEmail(email: string): Promise<boolean> {
   try {
     const supabaseAdmin = getSupabaseAdmin();
@@ -11,7 +10,6 @@ export async function isAdminEmail(email: string): Promise<boolean> {
       .single();
 
     if (error && error.code !== 'PGRST116') {
-      // PGRST116 means no rows found, which is expected for non-admins
       console.error('Error checking admin email:', error);
       return false;
     }
@@ -23,7 +21,6 @@ export async function isAdminEmail(email: string): Promise<boolean> {
   }
 }
 
-// Validate if user session is admin
 export async function validateAdminSession(email: string): Promise<boolean> {
   return isAdminEmail(email);
 }

@@ -76,7 +76,6 @@ export default function ServicesPage() {
         window.localStorage.setItem('sportbook:favorites', JSON.stringify(next))
         window.dispatchEvent(new CustomEvent('favorites-changed'))
       } catch {
-        // ignore storage errors
       }
       return next
     })

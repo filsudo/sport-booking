@@ -190,7 +190,6 @@ export default function BookingFlowPage() {
           setResumeMessage('Pokračujete tam, kde ste skončili.')
           toast.success('Obnovili sme vašu poslednú rozpracovanú rezerváciu')
         } catch {
-          // ignore invalid local storage data
         }
       } catch (error) {
         console.error('Booking services load error:', error)
@@ -217,7 +216,6 @@ export default function BookingFlowPage() {
       }
       window.localStorage.setItem('sportbook:bookingProgress', JSON.stringify(payload))
     } catch {
-      // ignore storage errors
     }
   }, [durationHours, selectedDate, selectedDateDraft, selectedServiceId, step])
 
@@ -496,7 +494,6 @@ export default function BookingFlowPage() {
         )
       }
     } catch {
-      // ignore storage errors
     }
 
     setSelectedServiceId(serviceId)
@@ -630,7 +627,6 @@ export default function BookingFlowPage() {
       }
       window.localStorage.setItem('sportbook:lastSelection', JSON.stringify(payload))
     } catch {
-      // ignore storage errors
     }
   }
 

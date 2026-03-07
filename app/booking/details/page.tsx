@@ -102,7 +102,6 @@ export default function BookingDetailsPage() {
       const parsed = JSON.parse(stored) as Partial<typeof formData>
       setFormData((prev) => ({ ...prev, ...parsed }))
     } catch {
-      // ignore storage errors
     }
   }, [])
 
@@ -110,7 +109,6 @@ export default function BookingDetailsPage() {
     try {
       window.localStorage.setItem('sportbook:bookingForm', JSON.stringify(formData))
     } catch {
-      // ignore storage errors
     }
   }, [formData])
 
