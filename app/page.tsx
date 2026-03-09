@@ -120,6 +120,16 @@ function HomeContent() {
     const elements = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal]'))
     if (!elements.length) return
 
+    const isInViewport = (el: HTMLElement) => {
+      const rect = el.getBoundingClientRect()
+      return rect.bottom > 0 && rect.top < window.innerHeight * 0.96
+    }
+
+    if (typeof IntersectionObserver === 'undefined') {
+      elements.forEach((el) => el.classList.add('is-visible'))
+      return
+    }
+
     const observer = new IntersectionObserver(
       (entries, obs) => {
         entries.forEach((entry) => {
@@ -133,12 +143,16 @@ function HomeContent() {
 
     elements.forEach((el) => {
       if (!el.classList.contains('is-visible')) {
+        if (isInViewport(el)) {
+          el.classList.add('is-visible')
+          return
+        }
         observer.observe(el)
       }
     })
 
     return () => observer.disconnect()
-  }, [services.length])
+  }, [lang, services.length, favoriteIds.length, recentServiceIds.length, lastSelection])
 
   const highlightedServices = useMemo(() => {
     if (!services.length) {
