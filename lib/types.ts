@@ -6,18 +6,25 @@ export interface Service {
   id: string
   name: string
   description: string | null
-  category?: string | null
+  category: string
   duration_minutes: number
   price: number
+  currency?: string
   is_active: boolean
   created_at: string
+  updated_at?: string
 }
 
 export interface Resource {
   id: string
+  service_id: string
   name: string
-  kind?: string | null
-  sort_order?: number | null
+  kind: string
+  capacity?: number
+  sort_order: number
+  is_active?: boolean
+  created_at?: string
+  updated_at?: string
 }
 
 export type SlotReason = 'closed' | 'booked' | 'not_generated'
@@ -48,11 +55,13 @@ export interface SlotsApiResponse {
 export interface Availability {
   id: string
   service_id: string
+  resource_id: string
   date: string
   start_time: string
   end_time: string
   is_available: boolean
   created_at: string
+  updated_at?: string
 }
 
 export interface Booking {

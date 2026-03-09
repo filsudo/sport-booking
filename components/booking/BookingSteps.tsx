@@ -3,9 +3,9 @@
 import { DayPicker } from 'react-day-picker'
 import 'react-day-picker/dist/style.css'
 import { addDays, startOfToday } from 'date-fns'
-import { sk } from 'date-fns/locale'
 import { Check, ChevronLeft, ChevronRight, Grid, Info, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { useI18n } from '@/components/layout/LanguageProvider'
 import { type Resource, type Service, type SlotReason } from '@/lib/types'
 
 interface StepProps {
@@ -22,10 +22,10 @@ function BookingStep({ number, title, isComplete, isActive }: StepProps) {
         className={
           'flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-all duration-200 ' +
           (isComplete
-            ? 'bg-blue-600 text-white'
+            ? 'bg-blue-600 text-white shadow-[0_8px_18px_rgba(37,99,235,0.26)]'
             : isActive
-              ? 'bg-blue-50 text-blue-700 ring-2 ring-blue-200'
-              : 'bg-slate-200 text-slate-600')
+              ? 'bg-blue-50 text-blue-700 ring-1 ring-blue-200'
+              : 'bg-slate-100 text-slate-500 ring-1 ring-slate-200')
         }
       >
         {isComplete ? <Check className="h-4 w-4" /> : number}
@@ -40,11 +40,17 @@ interface BookingStepperProps {
 }
 
 export function BookingStepper({ currentStep }: BookingStepperProps) {
-  const steps = ['Výber služby', 'Výber dátumu', 'Výber termínu', 'Dokončenie']
+  const { tr } = useI18n()
+  const steps = [
+    tr('bookingSteps.step1'),
+    tr('bookingSteps.step2'),
+    tr('bookingSteps.step3'),
+    tr('bookingSteps.step4'),
+  ]
 
   return (
     <div className="card p-6">
-      <h3 className="mb-6 text-lg font-bold text-slate-900">Postup rezervácie</h3>
+      <h3 className="mb-6 text-lg font-bold text-slate-900">{tr('bookingSteps.title')}</h3>
       {steps.map((title, i) => (
         <BookingStep
           key={title}
@@ -65,10 +71,12 @@ interface ServiceSelectorProps {
 }
 
 export function ServiceSelector({ services, selectedServiceId, onSelect }: ServiceSelectorProps) {
+  const { tr } = useI18n()
+
   return (
     <section>
-      <h2 className="text-2xl font-bold text-slate-900">Vyberte službu</h2>
-      <p className="mt-2 text-slate-600">Po výbere služby pokračujte na výber dátumu.</p>
+      <h2 className="text-2xl font-bold text-slate-900">{tr('bookingSteps.chooseService')}</h2>
+      <p className="mt-2 text-slate-600">{tr('bookingSteps.chooseServiceHint')}</p>
 
       <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
         {services.map((service) => {
@@ -87,14 +95,16 @@ export function ServiceSelector({ services, selectedServiceId, onSelect }: Servi
                 <div>
                   <h3 className="text-lg font-bold text-slate-900">{service.name}</h3>
                   <p className="mt-1 text-sm text-slate-600">
-                    {service.description || 'Komfortná rezervácia športovej aktivity'}
+                    {service.description || tr('bookingSteps.serviceDescriptionFallback')}
                   </p>
                 </div>
                 <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700 ring-1 ring-blue-100">
                   {service.duration_minutes} min
                 </span>
               </div>
-              <p className="mt-4 text-xl font-extrabold text-blue-700">Od {service.price.toFixed(2)} €</p>
+              <p className="mt-4 text-xl font-extrabold text-blue-700">
+                {tr('bookingSteps.fromPrice', { price: service.price.toFixed(2) })}
+              </p>
             </button>
           )
         })}
@@ -127,6 +137,7 @@ export function DatePicker({
   availabilityByDay = {},
   loadingMonth = false,
 }: DatePickerProps) {
+  const { tr, locale } = useI18n()
   const today = startOfToday()
   const maxDate = addDays(today, 90)
 
@@ -140,31 +151,31 @@ export function DatePicker({
 
   return (
     <section>
-      <h2 className="text-2xl font-bold text-slate-900">Vyberte dátum rezervácie</h2>
-      <p className="mt-2 text-slate-600">Rezervovať môžete maximálne 90 dní dopredu.</p>
+      <h2 className="text-2xl font-bold text-slate-900">{tr('bookingSteps.chooseDate')}</h2>
+      <p className="mt-2 text-slate-600">{tr('bookingSteps.chooseDateHint')}</p>
 
       <div className="mt-4 flex flex-wrap gap-2 text-xs">
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 ring-1 ring-blue-100">
-          <span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> Dostupný deň
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> {tr('bookingSteps.dayAvailable')}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 ring-1 ring-blue-100">
-          <span className="h-2.5 w-2.5 rounded-full bg-blue-300" /> Málo slotov
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50/70 px-2 py-1 text-blue-700">
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-300" /> {tr('bookingSteps.dayLow')}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-slate-600 ring-1 ring-slate-200">
-          <span className="h-2.5 w-2.5 rounded-full bg-slate-300" /> Nedostupné
+        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-slate-600">
+          <span className="h-2.5 w-2.5 rounded-full bg-slate-300" /> {tr('bookingSteps.dayUnavailable')}
         </span>
       </div>
 
       <div className="calendar-shell mt-5 w-full max-w-[500px] p-3 sm:p-4">
         <DayPicker
-          locale={sk}
+          locale={locale}
           mode="single"
           weekStartsOn={1}
           selected={selectedDate ? new Date(`${selectedDate}T00:00:00`) : undefined}
           onSelect={(date) => {
             if (!date) return
             if (getCount(date) === 0) {
-              toast.error('V tento deň nie sú dostupné žiadne termíny. Prosím vyberte iný dátum.')
+              toast.error(tr('bookingSteps.noSlotsInDay'))
               return
             }
             onSelect(toISODate(date))
@@ -189,16 +200,16 @@ export function DatePicker({
             caption_label: 'text-base font-bold text-slate-900',
             nav: 'flex items-center gap-1',
             button_previous:
-              'inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-all duration-200 hover:scale-105 hover:bg-blue-50 hover:text-blue-700',
+              'inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-all duration-200 hover:bg-blue-50 hover:text-blue-700',
             button_next:
-              'inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-all duration-200 hover:scale-105 hover:bg-blue-50 hover:text-blue-700',
+              'inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 transition-all duration-200 hover:bg-blue-50 hover:text-blue-700',
             month_grid: 'w-full border-separate border-spacing-x-1 border-spacing-y-1',
             weekdays: 'w-full',
             week: 'w-full',
             weekday: 'h-10 w-10 text-xs font-semibold text-slate-500',
-            day: 'h-10 w-10 rounded-lg border border-transparent text-sm font-medium transition-all duration-150',
+            day: 'h-10 w-10 rounded-lg border border-transparent text-sm font-medium transition-all duration-200',
             day_button:
-              'h-10 w-10 rounded-lg transition-all duration-150 hover:border-blue-200 hover:bg-blue-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
+              'h-10 w-10 rounded-lg border border-transparent transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500',
           }}
           components={{
             Chevron: ({ orientation }) =>
@@ -251,6 +262,7 @@ export function ResourceGrid({
   compactMode = false,
   currentTimeMarker = null,
 }: ResourceGridProps) {
+  const { tr } = useI18n()
   const slotMap = new Map(slots.map((slot) => [slotKey(slot.resource_id, slot.start_time), slot]))
   const availabilityByTime = new Map<string, { total: number; available: number }>()
 
@@ -278,7 +290,7 @@ export function ResourceGrid({
     return (
       <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-center">
         <Grid className="mx-auto h-6 w-6 text-slate-400" />
-        <p className="mt-2 text-sm text-slate-600">Pre tento deň zatiaľ nie sú vygenerované sloty.</p>
+        <p className="mt-2 text-sm text-slate-600">{tr('bookingSteps.noGeneratedSlots')}</p>
       </div>
     )
   }
@@ -286,24 +298,24 @@ export function ResourceGrid({
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs">
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 ring-1 ring-blue-100">
-          <span className="h-2.5 w-2.5 rounded-full bg-blue-100 ring-1 ring-blue-300" /> Voľné
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-100 ring-1 ring-blue-300" /> {tr('bookingSteps.free')}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-1 text-blue-700 ring-1 ring-blue-100">
-          <span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> Vybrané
+        <span className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-blue-700">
+          <span className="h-2.5 w-2.5 rounded-full bg-blue-600" /> {tr('bookingSteps.selected')}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-slate-600 ring-1 ring-slate-200">
-          <span className="h-2.5 w-2.5 rounded-full bg-slate-300" /> Obsadené
+        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-slate-600">
+          <span className="h-2.5 w-2.5 rounded-full bg-slate-300" /> {tr('bookingSteps.booked')}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-1 text-slate-600 ring-1 ring-slate-200">
-          <span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> Nedostupné
+        <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2 py-1 text-slate-600">
+          <span className="h-2.5 w-2.5 rounded-full bg-slate-400" /> {tr('bookingSteps.unavailable')}
         </span>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200/90 bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
         <div className="min-w-[760px] p-4">
           <div className="mb-3 grid" style={{ gridTemplateColumns: `180px repeat(${times.length}, minmax(48px, 1fr))` }}>
-            <div className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Zdroj</div>
+            <div className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{tr('bookingSteps.resource')}</div>
             {times.map((time) => (
             <div key={time} className="px-1 text-center text-xs font-semibold text-slate-500">
                 <span className={currentTimeMarker === time ? 'rounded-md bg-blue-600 px-1.5 py-0.5 text-white' : ''}>
@@ -336,20 +348,20 @@ export function ResourceGrid({
                   const ratio = stats && stats.total ? stats.available / stats.total : 0
                   const heatClass =
                     ratio >= 0.66
-                      ? 'border-blue-200 bg-blue-50/40'
+                      ? 'border-blue-200 bg-blue-50/45'
                       : ratio >= 0.33
-                        ? 'border-blue-300 bg-blue-100/70'
-                        : 'border-blue-400 bg-blue-200/70'
+                        ? 'border-blue-200 bg-blue-50/70'
+                        : 'border-blue-300 bg-blue-100/75'
 
                   const slotLabel = slot
                     ? slot.reason === 'booked'
-                      ? 'Obsadené'
+                      ? tr('bookingSteps.booked')
                       : slot.reason === 'closed'
-                        ? 'Nedostupné'
+                        ? tr('bookingSteps.unavailable')
                         : slot.reason === 'not_generated'
-                          ? 'Nevygenerované'
-                          : 'Voľné'
-                    : 'Nedostupné'
+                          ? tr('bookingSteps.notGenerated')
+                          : tr('bookingSteps.free')
+                    : tr('bookingSteps.unavailable')
 
                   return (
                     hiddenByFreeFilter ? (
@@ -375,16 +387,16 @@ export function ResourceGrid({
                         }}
                         aria-disabled={disabled}
                         className={
-                          'group relative rounded-lg border transition-all duration-150 ' +
+                          'group relative rounded-lg border transition-all duration-200 ' +
                           (compactMode ? 'h-9 min-h-[36px]' : 'h-11 min-h-[44px]') +
                           ' ' +
                           (selected
-                            ? 'scale-[1.03] border-blue-700 bg-blue-600 shadow-md'
+                            ? 'border-blue-700 bg-blue-600 shadow-[0_8px_16px_rgba(37,99,235,0.25)]'
                             : disabled
                               ? slot?.reason === 'booked'
                                 ? 'cursor-not-allowed border-slate-300 bg-slate-300/80 opacity-80'
                                 : 'cursor-not-allowed border-slate-200 bg-slate-200 opacity-70'
-                              : `${heatClass} hover:-translate-y-0.5 hover:border-blue-500 hover:bg-blue-100/80 hover:shadow-sm`)
+                              : `${heatClass} hover:-translate-y-0.5 hover:border-blue-400 hover:bg-blue-100/75 hover:shadow-sm`)
                         }
                       >
                         {!selected && slot?.reason === 'booked' ? (

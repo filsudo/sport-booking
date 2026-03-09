@@ -8,8 +8,9 @@ import toast from 'react-hot-toast'
 import { type User } from '@supabase/supabase-js'
 import { Button } from '@/components/ui/Button'
 import { AdminBookingsTable } from '@/components/admin/BookingsTable'
+import { useI18n } from '@/components/layout/LanguageProvider'
 import { supabase } from '@/lib/supabaseClient'
-import { type Booking, type Service } from '@/lib/types'
+import { type Booking, type Resource, type Service } from '@/lib/types'
 
 function toIsoToday() {
   const now = new Date()
@@ -17,10 +18,12 @@ function toIsoToday() {
 }
 
 export default function AdminDashboardPage() {
+  const { tr } = useI18n()
   const router = useRouter()
   const [user, setUser] = useState<User | null>(null)
   const [bookings, setBookings] = useState<Booking[]>([])
   const [services, setServices] = useState<Service[]>([])
+  const [resources, setResources] = useState<Resource[]>([])
   const [loading, setLoading] = useState(true)
   const [activityLog, setActivityLog] = useState<string[]>([])
   const [viewMode, setViewMode] = useState<'table' | 'calendar' | 'timeline'>('table')
@@ -28,19 +31,22 @@ export default function AdminDashboardPage() {
   const refreshData = useCallback(async () => {
     try {
       setLoading(true)
-      const [servicesRes, bookingsRes] = await Promise.all([
+      const [servicesRes, bookingsRes, resourcesRes] = await Promise.all([
         supabase.from('services').select('*').order('name', { ascending: true }),
         supabase.from('bookings').select('*').order('date', { ascending: false }).order('start_time', { ascending: true }),
+        supabase.from('resources').select('*').order('sort_order', { ascending: true }).order('name', { ascending: true }),
       ])
 
       if (servicesRes.error) throw servicesRes.error
       if (bookingsRes.error) throw bookingsRes.error
+      if (resourcesRes.error) throw resourcesRes.error
 
       setServices((servicesRes.data || []) as Service[])
       setBookings((bookingsRes.data || []) as Booking[])
+      setResources((resourcesRes.data || []) as Resource[])
     } catch (error) {
       console.error('Admin refresh error:', error)
-      toast.error('Nepodarilo sa načítať admin údaje')
+      toast.error('Failed to load admin data')
     } finally {
       setLoading(false)
     }
@@ -154,42 +160,42 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <header className="mb-8 flex flex-wrap items-center justify-between gap-3">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <header className="mb-7 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">Spravovať</h1>
-          <p className="mt-1 text-sm text-slate-600">Prihlásený používateľ: {user?.email || 'admin'}</p>
+          <h1 className="text-3xl font-extrabold text-slate-900">{tr('admin.title')}</h1>
+          <p className="mt-1 text-sm text-slate-600">{tr('admin.signedIn')}: {user?.email || 'admin'}</p>
         </div>
         <Button variant="secondary" onClick={handleLogout}>
-          <LogOut className="h-4 w-4" /> Odhlásiť sa
+          <LogOut className="h-4 w-4" /> {tr('admin.logout')}
         </Button>
       </header>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <article className="card card-hover animate-section-in p-5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-600">Rezervácie dnes</p>
+            <p className="text-sm font-semibold text-slate-600">{tr('admin.todayBookings')}</p>
             <CalendarDays className="h-5 w-5 text-blue-700" />
           </div>
           <p className="mt-3 text-3xl font-extrabold text-slate-900">{stats.today}</p>
         </article>
         <article className="card card-hover animate-section-in p-5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-600">Čakajúce</p>
+            <p className="text-sm font-semibold text-slate-600">{tr('admin.pending')}</p>
             <Clock3 className="h-5 w-5 text-slate-700" />
           </div>
           <p className="mt-3 text-3xl font-extrabold text-slate-900">{stats.pending}</p>
         </article>
         <article className="card card-hover animate-section-in p-5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-600">Potvrdené</p>
+            <p className="text-sm font-semibold text-slate-600">{tr('admin.confirmed')}</p>
             <CheckCircle2 className="h-5 w-5 text-blue-700" />
           </div>
           <p className="mt-3 text-3xl font-extrabold text-slate-900">{stats.confirmed}</p>
         </article>
         <article className="card card-hover animate-section-in p-5">
           <div className="flex items-center justify-between">
-            <p className="text-sm font-semibold text-slate-600">Zrušené</p>
+            <p className="text-sm font-semibold text-slate-600">{tr('admin.cancelled')}</p>
             <XCircle className="h-5 w-5 text-slate-700" />
           </div>
           <p className="mt-3 text-3xl font-extrabold text-slate-900">{stats.cancelled}</p>
@@ -198,22 +204,22 @@ export default function AdminDashboardPage() {
 
       <section className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
         <article className="card card-hover animate-section-in p-5">
-          <p className="text-sm font-semibold text-slate-600">Najbližšia rezervácia</p>
+          <p className="text-sm font-semibold text-slate-600">{tr('admin.nextBooking')}</p>
           <p className="mt-2 text-sm text-slate-800">
             {stats.nextBooking
               ? `${stats.nextBooking.date} • ${stats.nextBooking.start_time.slice(0, 5)} – ${stats.nextBooking.end_time.slice(0, 5)}`
-              : 'Žiadna nadchádzajúca rezervácia'}
+              : tr('admin.noUpcoming')}
           </p>
         </article>
         <article className="card card-hover animate-section-in p-5">
-          <p className="text-sm font-semibold text-slate-600">Najvyťaženejší čas dnes</p>
+          <p className="text-sm font-semibold text-slate-600">{tr('admin.busiestTime')}</p>
           <p className="mt-2 text-sm text-slate-800">{stats.busiest}</p>
         </article>
       </section>
 
       <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <article className="card card-hover animate-section-in p-5 lg:col-span-2">
-          <p className="text-sm font-semibold text-slate-600">Rezervácie za posledných 7 dní</p>
+          <p className="text-sm font-semibold text-slate-600">{tr('admin.weekly')}</p>
           <div className="mt-4 space-y-2">
             {weeklyStats.map((item) => (
               <div key={item.date} className="flex items-center gap-3 text-sm text-slate-600">
@@ -228,10 +234,10 @@ export default function AdminDashboardPage() {
         </article>
 
         <article className="card card-hover animate-section-in p-5">
-          <p className="text-sm font-semibold text-slate-600">Heatmap obsadenosti</p>
+          <p className="text-sm font-semibold text-slate-600">{tr('admin.heatmap')}</p>
           <div className="mt-4 grid grid-cols-4 gap-2 text-xs text-slate-600">
             {hourlyHeatmap.map((slot) => (
-              <div key={slot.hour} className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center">
+              <div key={slot.hour} className="rounded-lg border border-slate-200 bg-slate-50/90 p-2 text-center">
                 <div className="text-xs font-semibold text-slate-900">{slot.hour}:00</div>
                 <div className={slot.count >= 3 ? 'text-blue-700' : slot.count >= 1 ? 'text-blue-500' : 'text-slate-400'}>
                   {slot.count}
@@ -244,13 +250,13 @@ export default function AdminDashboardPage() {
 
       <section className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <article className="card card-hover animate-section-in p-5 lg:col-span-2">
-          <h2 className="text-lg font-bold text-slate-900">Aktivita</h2>
+          <h2 className="text-lg font-bold text-slate-900">{tr('admin.activity')}</h2>
           <div className="mt-3 space-y-2 text-xs text-slate-600">
             {activityLog.length === 0 ? (
-              <p>Žiadne recentné akcie.</p>
+              <p>{tr('admin.noActivity')}</p>
             ) : (
               activityLog.map((line) => (
-                <p key={line} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">{line}</p>
+                <p key={line} className="rounded-lg border border-slate-200 bg-slate-50/90 px-3 py-2">{line}</p>
               ))
             )}
           </div>
@@ -261,9 +267,9 @@ export default function AdminDashboardPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             {[
-              { key: 'table', label: 'Tabuľka' },
-              { key: 'calendar', label: 'Kalendár' },
-              { key: 'timeline', label: 'Timeline' },
+              { key: 'table', label: tr('admin.table') },
+              { key: 'calendar', label: tr('admin.calendar') },
+              { key: 'timeline', label: tr('admin.timeline') },
             ].map((mode) => (
               <button
                 key={mode.key}
@@ -282,7 +288,7 @@ export default function AdminDashboardPage() {
             ))}
           </div>
           <Button size="sm" variant="secondary" onClick={printDailyPlan}>
-            Tlačiť dnešný plán
+            {tr('admin.printToday')}
           </Button>
         </div>
 
@@ -293,13 +299,13 @@ export default function AdminDashboardPage() {
               <div className="h-64 animate-pulse rounded-xl bg-slate-200" />
             </div>
           ) : (
-            <AdminBookingsTable bookings={bookings} services={services} onRefresh={refreshData} />
+            <AdminBookingsTable bookings={bookings} services={services} resources={resources} onRefresh={refreshData} />
           )
         ) : null}
 
         {viewMode === 'calendar' ? (
           <div className="card p-5">
-            <h2 className="text-lg font-bold text-slate-900">Kalendár rezervácií</h2>
+            <h2 className="text-lg font-bold text-slate-900">{tr('admin.calendarTitle')}</h2>
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {Array.from(
                 bookings.reduce((map, booking) => {
@@ -312,9 +318,9 @@ export default function AdminDashboardPage() {
                 .sort(([a], [b]) => (a > b ? 1 : -1))
                 .slice(0, 9)
                 .map(([date, items]) => (
-                  <div key={date} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div key={date} className="rounded-xl border border-slate-200 bg-slate-50/90 p-3">
                     <p className="text-sm font-semibold text-slate-900">{date}</p>
-                    <p className="mt-1 text-xs text-slate-600">Rezervácií: {items.length}</p>
+                    <p className="mt-1 text-xs text-slate-600">{tr('admin.bookingsCount', { count: items.length })}</p>
                     <div className="mt-2 space-y-1.5">
                       {items.slice(0, 4).map((item) => (
                         <p key={item.id} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
@@ -330,16 +336,27 @@ export default function AdminDashboardPage() {
 
         {viewMode === 'timeline' ? (
           <div className="card p-5">
-            <h2 className="text-lg font-bold text-slate-900">Timeline rezervácií dnes</h2>
+            <h2 className="text-lg font-bold text-slate-900">{tr('admin.timelineTitle')}</h2>
             <div className="mt-3 space-y-2 text-sm text-slate-700">
               {todayTimeline.length === 0 ? (
-                <p>Žiadne rezervácie na dnes.</p>
+                <p>{tr('admin.noTodayBookings')}</p>
               ) : (
                 todayTimeline.map((booking) => (
-                  <div key={booking.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div key={booking.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/90 px-3 py-2">
                     <span className="font-semibold text-slate-900">{booking.start_time.slice(0, 5)}</span>
                     <span className="text-slate-600">{booking.customer_name}</span>
-                    <span className="text-slate-500">{booking.status}</span>
+                    <span
+                      className={
+                        'inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ' +
+                        (booking.status === 'confirmed'
+                          ? 'badge-success'
+                          : booking.status === 'pending'
+                            ? 'badge-warning'
+                            : 'badge-danger')
+                      }
+                    >
+                      {booking.status}
+                    </span>
                   </div>
                 ))
               )}
@@ -350,13 +367,16 @@ export default function AdminDashboardPage() {
 
       <nav className="mt-6 flex flex-wrap gap-2">
         <Link href="/admin">
-          <Button>Rezervácie</Button>
+          <Button>{tr('admin.bookings')}</Button>
         </Link>
         <Link href="/admin/services">
-          <Button variant="secondary">Služby</Button>
+          <Button variant="secondary">{tr('admin.services')}</Button>
+        </Link>
+        <Link href="/admin/resources">
+          <Button variant="secondary">{tr('admin.resources')}</Button>
         </Link>
         <Link href="/admin/availability">
-          <Button variant="secondary">Dostupnosť</Button>
+          <Button variant="secondary">{tr('admin.availability')}</Button>
         </Link>
       </nav>
     </div>

@@ -51,14 +51,14 @@ export function normalizeCategory(
 }
 
 export const bookingFormSchema = z.object({
-  customer_name: z.string().min(2, 'Meno musí mať minimálne 2 znaky').max(100),
-  customer_email: z.string().email('Neplatný email'),
-  customer_phone: z.string().min(6, 'Neplatné telefónne číslo').max(20),
+  customer_name: z.string().min(2, 'Name must contain at least 2 characters').max(100),
+  customer_email: z.string().email('Invalid email'),
+  customer_phone: z.string().min(6, 'Invalid phone number').max(24),
   note: z.string().max(500).optional(),
 })
 
 export const serviceSchema = z.object({
-  name: z.string().min(2, 'Názov musí mať minimálne 2 znaky').max(200),
+  name: z.string().min(2, 'Service name must contain at least 2 characters').max(200),
   description: z.string().max(1000).optional(),
   duration_minutes: z.number().int().min(15).max(480),
   price: z.number().min(0).max(99999.99),
@@ -67,7 +67,7 @@ export const serviceSchema = z.object({
 
 export const createSlotSchema = z.object({
   serviceId: z.string().uuid(),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Neplatný formát dátumu'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
 })
 
 export type BookingFormInput = z.infer<typeof bookingFormSchema>

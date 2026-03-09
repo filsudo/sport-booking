@@ -3,10 +3,15 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { Button } from '@/components/ui/Button'
+import { useI18n } from '@/components/layout/LanguageProvider'
 
 type SlotState = 'free' | 'busy'
 
-const resources = ['Kurt 1', 'Kurt 2', 'Stôl 1']
+const resources = [
+  { id: 'court_1', en: 'Court 1', sk: 'Kurt 1' },
+  { id: 'court_2', en: 'Court 2', sk: 'Kurt 2' },
+  { id: 'table_1', en: 'Table 1', sk: 'Stol 1' },
+]
 const times = ['09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30']
 
 function keyFor(resource: string, time: string) {
@@ -21,13 +26,14 @@ function createInitialSlots() {
         (rIndex === 0 && (tIndex === 0 || tIndex === 4)) ||
         (rIndex === 1 && (tIndex === 1 || tIndex === 5)) ||
         (rIndex === 2 && (tIndex === 2 || tIndex === 3))
-      initial.set(keyFor(resource, time), busy ? 'busy' : 'free')
+      initial.set(keyFor(resource.id, time), busy ? 'busy' : 'free')
     })
   })
   return initial
 }
 
 export function ReservationGridPreview() {
+  const { lang } = useI18n()
   const [slots, setSlots] = useState<Map<string, SlotState>>(createInitialSlots)
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -64,11 +70,11 @@ export function ReservationGridPreview() {
 
   const legend = useMemo(
     () => [
-      { label: 'Voľné', className: 'border border-blue-300 bg-blue-50' },
-      { label: 'Vybrané', className: 'border border-blue-600 bg-blue-600' },
-      { label: 'Obsadené', className: 'border border-slate-300 bg-slate-200' },
+      { label: lang === 'sk' ? 'Volne' : 'Free', className: 'border border-blue-200 bg-blue-50' },
+      { label: lang === 'sk' ? 'Vybrane' : 'Selected', className: 'border border-blue-600 bg-blue-600' },
+      { label: lang === 'sk' ? 'Obsadene' : 'Booked', className: 'border border-slate-300 bg-slate-200' },
     ],
-    []
+    [lang]
   )
 
   return (
@@ -95,11 +101,11 @@ export function ReservationGridPreview() {
 
         <div className="space-y-3">
           {resources.map((resource) => (
-            <div key={resource} className="rounded-2xl border border-slate-200 p-3">
-              <div className="mb-2 text-sm font-bold text-slate-900">{resource}</div>
+            <div key={resource.id} className="rounded-2xl border border-slate-200 p-3">
+              <div className="mb-2 text-sm font-bold text-slate-900">{lang === 'sk' ? resource.sk : resource.en}</div>
               <div className="grid grid-cols-8 gap-1.5">
                 {times.map((time) => {
-                  const slotKey = keyFor(resource, time)
+                  const slotKey = keyFor(resource.id, time)
                   const state = slots.get(slotKey) ?? 'free'
                   const selected = selectedKey === slotKey
                   const disabled = state === 'busy'
@@ -115,12 +121,12 @@ export function ReservationGridPreview() {
                       className={
                         'h-7 rounded-lg border text-[10px] font-semibold transition-all duration-200 ' +
                         (selected
-                          ? 'scale-[1.02] border-blue-600 bg-blue-600 text-white shadow-md'
-                          : disabled
-                            ? 'cursor-not-allowed border-slate-300 bg-slate-200 text-slate-400'
-                            : 'border-blue-200 bg-blue-50/40 text-blue-700 hover:border-blue-400 hover:bg-blue-100/70')
+                        ? 'border-blue-600 bg-blue-600 text-white shadow-[0_8px_14px_rgba(37,99,235,0.25)]'
+                        : disabled
+                          ? 'cursor-not-allowed border-slate-300 bg-slate-200 text-slate-400'
+                          : 'border-blue-200 bg-blue-50/55 text-blue-700 hover:border-blue-400 hover:bg-blue-100/70')
                       }
-                      aria-label={`${resource} ${time}`}
+                      aria-label={`${lang === 'sk' ? resource.sk : resource.en} ${time}`}
                     />
                   )
                 })}
@@ -130,7 +136,7 @@ export function ReservationGridPreview() {
         </div>
 
         <Link href="/booking" className="block">
-          <Button className="w-full">Otvoriť rezerváciu</Button>
+          <Button className="w-full">{lang === 'sk' ? 'Otvorit rezervaciu' : 'Open booking'}</Button>
         </Link>
       </div>
     </div>

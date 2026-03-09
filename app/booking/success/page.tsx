@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import { CheckCircle2, Copy, Download, ExternalLink, Printer, Share2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/Button'
+import { useI18n } from '@/components/layout/LanguageProvider'
 
 function toCalendarDate(date: string, time: string) {
   return `${date}T${time.length === 5 ? `${time}:00` : time}`
@@ -22,31 +23,33 @@ function toICSDate(value: Date) {
 }
 
 function SuccessContent() {
+  const { tr } = useI18n()
   const params = useSearchParams()
   const id = params.get('id') || 'N/A'
-  const service = params.get('service') || 'Služba'
+  const service = params.get('service') || tr('bookingDetails.defaultService')
   const serviceId = params.get('serviceId') || ''
-  const resource = params.get('resource') || 'Zdroj'
+  const resource = params.get('resource') || tr('bookingDetails.defaultResource')
   const resourceId = params.get('resourceId') || ''
   const date = params.get('date') || ''
   const start = params.get('start') || ''
   const end = params.get('end') || ''
 
   const detailsText = useMemo(
-    () => `Rezervácia ${id}\nSlužba: ${service}\nZdroj: ${resource}\nDátum: ${date}\nČas: ${start.slice(0, 5)} - ${end.slice(0, 5)}`,
-    [id, service, resource, date, start, end]
+    () =>
+      `${tr('bookingSuccess.bookingLabel')} ${id}\n${tr('common.service')}: ${service}\n${tr('common.resource')}: ${resource}\n${tr('common.date')}: ${date}\n${tr('common.time')}: ${start.slice(0, 5)} - ${end.slice(0, 5)}`,
+    [id, service, resource, date, start, end, tr]
   )
 
   function handleCopy() {
     navigator.clipboard
       .writeText(detailsText)
-      .then(() => toast.success('Detaily rezervácie boli skopírované'))
-      .catch(() => toast.error('Nepodarilo sa skopírovať rezerváciu'))
+      .then(() => toast.success(tr('bookingSuccess.copySuccess')))
+      .catch(() => toast.error(tr('bookingSuccess.copyError')))
   }
 
   function handleDownloadIcs() {
     if (!date || !start || !end) {
-      toast.error('Chýbajú údaje pre kalendár')
+      toast.error(tr('bookingSuccess.missingCalendarData'))
       return
     }
 
@@ -63,7 +66,7 @@ function SuccessContent() {
       `DTSTART:${toICSDate(startDate)}`,
       `DTEND:${toICSDate(endDate)}`,
       `SUMMARY:${service}`,
-      `DESCRIPTION:Rezervácia ${service} - ${resource}`,
+      `DESCRIPTION:${tr('bookingSuccess.bookingLabel')} ${service} - ${resource}`,
       'LOCATION:SportBook, Bratislava',
       'END:VEVENT',
       'END:VCALENDAR',
@@ -82,8 +85,8 @@ function SuccessContent() {
 
   async function handleShare() {
     const shareData = {
-      title: 'SportBook rezervácia',
-      text: `Rezervácia ${service} • ${date} ${start.slice(0, 5)} – ${end.slice(0, 5)}`,
+      title: `SportBook ${tr('bookingSuccess.bookingLabel')}`,
+      text: `${tr('bookingSuccess.bookingLabel')} ${service} - ${date} ${start.slice(0, 5)} - ${end.slice(0, 5)}`,
       url: window.location.href,
     }
 
@@ -98,8 +101,8 @@ function SuccessContent() {
 
     navigator.clipboard
       .writeText(window.location.href)
-      .then(() => toast.success('Odkaz na rezerváciu bol skopírovaný'))
-      .catch(() => toast.error('Nepodarilo sa skopírovať odkaz'))
+      .then(() => toast.success(tr('bookingSuccess.copyLinkSuccess')))
+      .catch(() => toast.error(tr('bookingSuccess.copyLinkError')))
   }
 
   function handlePrint() {
@@ -118,55 +121,55 @@ function SuccessContent() {
     return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
       service
     )}&dates=${from}/${to}&details=${encodeURIComponent(
-      `Rezervácia ${service} - ${resource}`
+      `${tr('bookingSuccess.bookingLabel')} ${service} - ${resource}`
     )}&location=${encodeURIComponent('SportBook, Bratislava')}`
-  }, [date, start, end, resource, service])
+  }, [date, start, end, resource, service, tr])
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
       <div className="card animate-section-in p-8 text-center">
-        <CheckCircle2 className="mx-auto h-16 w-16 text-blue-600 drop-shadow-[0_6px_18px_rgba(37,99,235,0.35)]" />
-        <h1 className="mt-4 text-3xl font-extrabold text-slate-900">Rezervácia bola úspešne odoslaná</h1>
-        <p className="mt-2 text-slate-600">Ďakujeme, potvrdenie rezervácie prebehlo úspešne.</p>
+        <CheckCircle2 className="mx-auto h-16 w-16 text-blue-600 drop-shadow-[0_6px_16px_rgba(37,99,235,0.28)]" />
+        <h1 className="mt-4 text-3xl font-extrabold text-slate-900">{tr('bookingSuccess.title')}</h1>
+        <p className="mt-2 text-slate-600">{tr('bookingSuccess.subtitle')}</p>
 
-        <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-left text-sm text-slate-700">
-          <p><span className="font-semibold">Referenčné číslo:</span> {id}</p>
-          <p><span className="font-semibold">Služba:</span> {service}</p>
-          <p><span className="font-semibold">Zdroj:</span> {resource}</p>
-          <p><span className="font-semibold">Dátum:</span> {date || '-'}</p>
-          <p><span className="font-semibold">Čas:</span> {start.slice(0, 5)} – {end.slice(0, 5)}</p>
+        <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/80 p-4 text-left text-sm text-slate-700">
+          <p><span className="font-semibold">{tr('bookingSuccess.reference')}:</span> {id}</p>
+          <p><span className="font-semibold">{tr('common.service')}:</span> {service}</p>
+          <p><span className="font-semibold">{tr('common.resource')}:</span> {resource}</p>
+          <p><span className="font-semibold">{tr('common.date')}:</span> {date || '-'}</p>
+          <p><span className="font-semibold">{tr('common.time')}:</span> {start.slice(0, 5)} - {end.slice(0, 5)}</p>
         </div>
 
         <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Button variant="secondary" onClick={handleCopy}>
-            <Copy className="h-4 w-4" /> Skopírovať rezerváciu
+            <Copy className="h-4 w-4" /> {tr('bookingSuccess.copy')}
           </Button>
           <Button variant="secondary" onClick={handleDownloadIcs}>
-            <Download className="h-4 w-4" /> Stiahnuť .ics
+            <Download className="h-4 w-4" /> {tr('bookingSuccess.downloadIcs')}
           </Button>
           <Button variant="secondary" onClick={handleShare}>
-            <Share2 className="h-4 w-4" /> Zdieľať rezerváciu
+            <Share2 className="h-4 w-4" /> {tr('bookingSuccess.share')}
           </Button>
           <Button variant="secondary" onClick={handlePrint}>
-            <Printer className="h-4 w-4" /> Vytlačiť potvrdenie
+            <Printer className="h-4 w-4" /> {tr('bookingSuccess.print')}
           </Button>
           <a href={googleLink} target="_blank" rel="noreferrer" className="sm:col-span-2">
             <Button className="w-full">
-              <ExternalLink className="h-4 w-4" /> Pridať do Google kalendára
+              <ExternalLink className="h-4 w-4" /> {tr('bookingSuccess.addGoogle')}
             </Button>
           </a>
         </div>
 
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link href="/"><Button variant="secondary">Späť na domov</Button></Link>
-          <Link href="/booking"><Button>Nová rezervácia</Button></Link>
+          <Link href="/"><Button variant="secondary">{tr('bookingSuccess.backHome')}</Button></Link>
+          <Link href="/booking"><Button>{tr('bookingSuccess.newBooking')}</Button></Link>
           {serviceId ? (
             <Link
               href={`/booking?serviceId=${encodeURIComponent(serviceId)}${
                 date ? `&date=${encodeURIComponent(date)}` : ''
               }${resourceId ? `&resourceId=${encodeURIComponent(resourceId)}` : ''}`}
             >
-              <Button variant="secondary">Rezervovať podobný termín</Button>
+              <Button variant="secondary">{tr('bookingSuccess.similarBooking')}</Button>
             </Link>
           ) : null}
         </div>

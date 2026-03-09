@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -8,6 +8,8 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabaseClient'
 import { Service } from '@/lib/types'
 import { Button } from '@/components/ui/Button'
+import { AnimatedSelect } from '@/components/ui/AnimatedSelect'
+import { useI18n } from '@/components/layout/LanguageProvider'
 
 type FormState = {
   name: string
@@ -29,6 +31,7 @@ const initialForm: FormState = {
 
 export default function AdminServicesPage() {
   const router = useRouter()
+  const { lang } = useI18n()
   const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -37,6 +40,7 @@ export default function AdminServicesPage() {
   const [editId, setEditId] = useState<string | null>(null)
   const [formData, setFormData] = useState<FormState>(initialForm)
 
+  const L = (skText: string, enText: string) => (lang === 'sk' ? skText : enText)
   const activeCount = useMemo(() => services.filter((s) => s.is_active).length, [services])
 
   useEffect(() => {
@@ -50,10 +54,19 @@ export default function AdminServicesPage() {
 
   async function checkAdminSession(): Promise<boolean> {
     const { data } = await supabase.auth.getSession()
-    if (!data.session?.user) {
+    const email = data.session?.user?.email?.toLowerCase()
+    if (!email) {
       router.replace('/login?redirect=/admin/services')
       return false
     }
+
+    const { data: adminRow } = await supabase.from('admin_users').select('email').eq('email', email).maybeSingle()
+    if (!adminRow) {
+      await supabase.auth.signOut()
+      router.replace('/login?error=not_admin')
+      return false
+    }
+
     return true
   }
 
@@ -65,7 +78,7 @@ export default function AdminServicesPage() {
       setServices((data || []) as Service[])
     } catch (error) {
       console.error('Services load error:', error)
-      toast.error('Nepodarilo sa načítať služby')
+      toast.error(L('Nepodarilo sa nacitat sluzby', 'Failed to load services'))
     } finally {
       setLoading(false)
     }
@@ -95,7 +108,7 @@ export default function AdminServicesPage() {
 
     const name = formData.name.trim()
     if (name.length < 2) {
-      toast.error('Názov služby je príliš krátky')
+      toast.error(L('Nazov sluzby je prilis kratky', 'Service name is too short'))
       return
     }
 
@@ -113,11 +126,11 @@ export default function AdminServicesPage() {
       if (editId) {
         const { error } = await supabase.from('services').update(payload).eq('id', editId)
         if (error) throw error
-        toast.success('Služba bola upravená')
+        toast.success(L('Sluzba bola upravena', 'Service updated'))
       } else {
         const { error } = await supabase.from('services').insert([payload])
         if (error) throw error
-        toast.success('Služba bola vytvorená')
+        toast.success(L('Sluzba bola vytvorena', 'Service created'))
       }
 
       setIsFormOpen(false)
@@ -125,25 +138,25 @@ export default function AdminServicesPage() {
       await loadServices()
     } catch (error) {
       console.error('Save service error:', error)
-      toast.error('Nepodarilo sa uložiť službu')
+      toast.error(L('Nepodarilo sa ulozit sluzbu', 'Failed to save service'))
     } finally {
       setSaving(false)
     }
   }
 
   async function removeService(serviceId: string) {
-    const ok = window.confirm('Naozaj chcete vymazať službu?')
+    const ok = window.confirm(L('Naozaj chcete vymazat sluzbu?', 'Do you really want to delete this service?'))
     if (!ok) return
 
     try {
       setDeletingId(serviceId)
       const { error } = await supabase.from('services').delete().eq('id', serviceId)
       if (error) throw error
-      toast.success('Služba bola vymazaná')
+      toast.success(L('Sluzba bola vymazana', 'Service deleted'))
       await loadServices()
     } catch (error) {
       console.error('Delete service error:', error)
-      toast.error('Nepodarilo sa vymazať službu')
+      toast.error(L('Nepodarilo sa vymazat sluzbu', 'Failed to delete service'))
     } finally {
       setDeletingId(null)
     }
@@ -153,28 +166,40 @@ export default function AdminServicesPage() {
     try {
       const { error } = await supabase.from('services').update({ is_active: !service.is_active }).eq('id', service.id)
       if (error) throw error
-      toast.success(service.is_active ? 'Služba deaktivovaná' : 'Služba aktivovaná')
+      toast.success(service.is_active ? L('Sluzba deaktivovana', 'Service deactivated') : L('Sluzba aktivovana', 'Service activated'))
       await loadServices()
     } catch (error) {
       console.error('Toggle service error:', error)
-      toast.error('Nepodarilo sa zmeniť stav služby')
+      toast.error(L('Nepodarilo sa zmenit stav sluzby', 'Failed to change service status'))
     }
   }
 
   return (
-    <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
       <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900">Správa služieb</h1>
-          <p className="mt-1 text-sm text-slate-600">Aktívne služby: {activeCount} / {services.length}</p>
+          <h1 className="text-3xl font-extrabold text-slate-900">{L('Sprava sluzieb', 'Services management')}</h1>
+          <p className="mt-1 text-sm text-slate-600">
+            {L('Aktivne sluzby', 'Active services')}: {activeCount} / {services.length}
+          </p>
         </div>
         <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" /> Nová služba
+          <Plus className="h-4 w-4" /> {L('Nova sluzba', 'New service')}
         </Button>
       </header>
 
       <div className="mb-4">
-        <Link href="/admin" className="text-sm font-semibold text-blue-700 hover:text-blue-800">← Späť na dashboard</Link>
+        <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-blue-700">
+          <Link href="/admin" className="hover:text-blue-800">
+            {L('Dashboard', 'Dashboard')}
+          </Link>
+          <Link href="/admin/resources" className="hover:text-blue-800">
+            {L('Zdroje', 'Resources')}
+          </Link>
+          <Link href="/admin/availability" className="hover:text-blue-800">
+            {L('Dostupnost', 'Availability')}
+          </Link>
+        </div>
       </div>
 
       {loading ? (
@@ -192,105 +217,115 @@ export default function AdminServicesPage() {
                   <h2 className="text-lg font-bold text-slate-900">{service.name}</h2>
                   <p className="mt-1 text-xs uppercase tracking-wide text-slate-500">{(service.category || 'other').toUpperCase()}</p>
                 </div>
-                <span className={
-                  'rounded-full px-2.5 py-1 text-xs font-semibold ' +
-                  (service.is_active ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600')
-                }>
-                  {service.is_active ? 'Aktívna' : 'Neaktívna'}
+                <span
+                  className={
+                    'rounded-full px-2.5 py-1 text-xs font-semibold ' +
+                    (service.is_active ? 'badge-success' : 'badge-neutral')
+                  }
+                >
+                  {service.is_active ? L('Aktivna', 'Active') : L('Neaktivna', 'Inactive')}
                 </span>
               </div>
 
-              <p className="min-h-[42px] text-sm text-slate-600">{service.description || 'Bez popisu služby.'}</p>
+              <p className="min-h-[42px] text-sm text-slate-600">{service.description || L('Bez popisu sluzby.', 'No service description.')}</p>
 
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p className="text-xs text-slate-500">Trvanie</p>
+                  <p className="text-xs text-slate-500">{L('Trvanie', 'Duration')}</p>
                   <p className="font-semibold text-slate-900">{service.duration_minutes} min</p>
                 </div>
                 <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <p className="text-xs text-slate-500">Cena</p>
-                  <p className="font-semibold text-slate-900">{Number(service.price || 0).toFixed(2)} €</p>
+                  <p className="text-xs text-slate-500">{L('Cena', 'Price')}</p>
+                  <p className="font-semibold text-slate-900">{Number(service.price || 0).toFixed(2)} EUR</p>
                 </div>
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" onClick={() => openEdit(service)}>
-                  <Edit className="h-4 w-4" /> Upraviť
+                  <Edit className="h-4 w-4" /> {L('Upravit', 'Edit')}
                 </Button>
                 <Button size="sm" variant="secondary" onClick={() => toggleActive(service)}>
                   {service.is_active ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  {service.is_active ? 'Deaktivovať' : 'Aktivovať'}
+                  {service.is_active ? L('Deaktivovat', 'Deactivate') : L('Aktivovat', 'Activate')}
                 </Button>
                 <Button size="sm" variant="danger" onClick={() => removeService(service.id)} isLoading={deletingId === service.id}>
-                  <Trash2 className="h-4 w-4" /> Vymazať
+                  <Trash2 className="h-4 w-4" /> {L('Vymazat', 'Delete')}
                 </Button>
               </div>
             </article>
           ))}
+          {services.length === 0 ? (
+            <div className="card col-span-full p-8 text-center text-sm text-slate-600">
+              <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-5">
+                {L('Zatial nie su vytvorene ziadne sluzby.', 'No services created yet.')}
+              </div>
+            </div>
+          ) : null}
         </section>
       )}
 
       {isFormOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4" onClick={() => !saving && setIsFormOpen(false)}>
           <div className="w-full max-w-lg animate-section-in rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-xl font-bold text-slate-900">{editId ? 'Upraviť službu' : 'Nová služba'}</h2>
+            <h2 className="text-xl font-bold text-slate-900">{editId ? L('Upravit sluzbu', 'Edit service') : L('Nova sluzba', 'New service')}</h2>
             <form onSubmit={saveService} className="mt-4 space-y-4">
               <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-700">Názov</label>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">{L('Nazov', 'Name')}</label>
                 <input
                   value={formData.name}
                   onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Názov služby"
+                  className="control-soft w-full rounded-xl px-3 py-2 text-sm"
+                  placeholder={L('Nazov sluzby', 'Service name')}
                   required
                 />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-semibold text-slate-700">Opis</label>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">{L('Popis', 'Description')}</label>
                 <textarea
                   value={formData.description}
                   onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
                   rows={3}
-                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Krátky popis služby"
+                  className="control-soft w-full rounded-xl px-3 py-2 text-sm"
+                  placeholder={L('Kratky popis sluzby', 'Short service description')}
                 />
               </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-700">Kategória</label>
-                  <select
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">{L('Kategoria', 'Category')}</label>
+                  <AnimatedSelect
                     value={formData.category}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, category: e.target.value as FormState['category'] }))}
-                    className="control-soft select-soft w-full rounded-xl px-3 py-2 text-sm"
-                  >
-                    <option value="courts">Kurty</option>
-                    <option value="tables">Stoly</option>
-                    <option value="trainings">Tréningy</option>
-                    <option value="other">Iné</option>
-                  </select>
+                    onChange={(nextValue) => setFormData((prev) => ({ ...prev, category: nextValue as FormState['category'] }))}
+                    options={[
+                      { value: 'courts', label: L('Kurty', 'Courts') },
+                      { value: 'tables', label: L('Stoly', 'Tables') },
+                      { value: 'trainings', label: L('Treningy', 'Trainings') },
+                      { value: 'other', label: L('Ine', 'Other') },
+                    ]}
+                    buttonClassName="w-full rounded-xl px-3 py-2 text-sm"
+                  />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-700">Trvanie (min)</label>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">{L('Trvanie (min)', 'Duration (min)')}</label>
                   <input
                     type="number"
                     min={30}
                     step={15}
                     value={formData.duration_minutes}
                     onChange={(e) => setFormData((prev) => ({ ...prev, duration_minutes: Number(e.target.value) }))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="control-soft w-full rounded-xl px-3 py-2 text-sm"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-semibold text-slate-700">Cena (€)</label>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">{L('Cena (EUR)', 'Price (EUR)')}</label>
                   <input
                     type="number"
                     min={0}
                     step={0.5}
                     value={formData.price}
                     onChange={(e) => setFormData((prev) => ({ ...prev, price: Number(e.target.value) }))}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="control-soft w-full rounded-xl px-3 py-2 text-sm"
                   />
                 </div>
               </div>
@@ -301,15 +336,15 @@ export default function AdminServicesPage() {
                   checked={formData.is_active}
                   onChange={(e) => setFormData((prev) => ({ ...prev, is_active: e.target.checked }))}
                 />
-                Aktívna služba
+                {L('Aktivna sluzba', 'Active service')}
               </label>
 
               <div className="flex gap-2">
                 <Button type="button" variant="secondary" className="flex-1" onClick={() => setIsFormOpen(false)} disabled={saving}>
-                  Zavrieť
+                  {L('Zavriet', 'Close')}
                 </Button>
                 <Button type="submit" className="flex-1" isLoading={saving}>
-                  {editId ? 'Uložiť' : 'Vytvoriť'}
+                  {editId ? L('Ulozit', 'Save') : L('Vytvorit', 'Create')}
                 </Button>
               </div>
             </form>

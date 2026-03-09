@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { CalendarDays, Clock3, Filter, LayoutGrid, List, RotateCcw, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { supabase } from '@/lib/supabaseClient'
+import { AnimatedSelect } from '@/components/ui/AnimatedSelect'
+import { useI18n } from '@/components/layout/LanguageProvider'
+import { getSupabaseErrorMessage, isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
 import {
   BookingStepper,
   DatePicker,
@@ -79,14 +81,15 @@ function toDurationHours(value: unknown): 1 | 2 | 3 {
   return value === 2 || value === 3 ? value : 1
 }
 
-function blockedReasonText(reason?: ApiSlot['reason']) {
-  if (reason === 'booked') return 'Obsadené'
-  if (reason === 'closed') return 'Čas už uplynul alebo je mimo prevádzkových hodín'
-  if (reason === 'not_generated') return 'Termíny pre tento deň zatiaľ neboli vygenerované'
-  return 'Nie je dostupné'
+function blockedReasonText(reason: ApiSlot['reason'] | undefined, lang: 'en' | 'sk') {
+  if (reason === 'booked') return lang === 'sk' ? 'Obsadene' : 'Booked'
+  if (reason === 'closed') return lang === 'sk' ? 'Cas uz uplynul alebo je mimo prevadzkovych hodin' : 'Time has already passed or is outside opening hours'
+  if (reason === 'not_generated') return lang === 'sk' ? 'Terminy pre tento den zatial neboli vygenerovane' : 'Slots for this day have not been generated yet'
+  return lang === 'sk' ? 'Nie je dostupne' : 'Not available'
 }
 
 export default function BookingFlowPage() {
+  const { lang } = useI18n()
   const router = useRouter()
   const contentRef = useRef<HTMLDivElement | null>(null)
   const slotGridRef = useRef<HTMLDivElement | null>(null)
@@ -126,6 +129,11 @@ export default function BookingFlowPage() {
   const [resourcePreview, setResourcePreview] = useState<ResourcePreview[]>([])
   const [bestTimeSuggestion, setBestTimeSuggestion] = useState<string | null>(null)
 
+  const L = useCallback(
+    (skText: string, enText: string) => (lang === 'sk' ? skText : enText),
+    [lang]
+  )
+
   const resetSelection = useCallback(() => {
     setSelectedResourceId(null)
     setSelectedStartTime(null)
@@ -148,6 +156,14 @@ export default function BookingFlowPage() {
     async function loadServices() {
       try {
         setLoadingServices(true)
+        if (!isSupabaseConfigured) {
+          if (active) {
+            setServices([])
+            setLoadingServices(false)
+          }
+          return
+        }
+
         const { data, error } = await supabase
           .from('services')
           .select('*')
@@ -187,13 +203,13 @@ export default function BookingFlowPage() {
           setSelectedDate(restoredDate)
           setDurationHours(restoredDuration)
           setStep(restoredStep)
-          setResumeMessage('Pokračujete tam, kde ste skončili.')
-          toast.success('Obnovili sme vašu poslednú rozpracovanú rezerváciu')
+          setResumeMessage(L('Pokracujete tam, kde ste skoncili.', 'Continuing where you left off.'))
+          toast.success(L('Obnovili sme vasu poslednu rozpracovanu rezervaciu', 'We restored your last in-progress booking'))
         } catch {
         }
       } catch (error) {
-        console.error('Booking services load error:', error)
-        toast.error('Nepodarilo sa načítať služby')
+        console.error('Booking services load error:', getSupabaseErrorMessage(error, 'Failed to load services'))
+        toast.error(L('Nepodarilo sa nacitat sluzby', 'Failed to load services'))
       } finally {
         if (active) setLoadingServices(false)
       }
@@ -203,7 +219,7 @@ export default function BookingFlowPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [L])
 
   useEffect(() => {
     if (!selectedServiceId) return
@@ -280,12 +296,12 @@ export default function BookingFlowPage() {
           const freeCount = availableItems.length
           const status =
             freeCount === 0
-              ? 'Bez voľných slotov'
+              ? L('Bez volnych slotov', 'No free slots')
               : nearest && minutesOf(nearest) >= 17 * 60
-                ? 'Voľný večer'
+                ? L('Volny vecer', 'Free evening slots')
                 : freeCount >= 6
-                  ? 'Veľa voľných slotov'
-                  : 'Obmedzená dostupnosť'
+                  ? L('Vela volnych slotov', 'Many free slots')
+                  : L('Obmedzena dostupnost', 'Limited availability')
 
           return {
             id: resource.id,
@@ -306,7 +322,7 @@ export default function BookingFlowPage() {
               name: resource.name,
               nearestFree: null,
               freeSlotsToday: 0,
-              status: 'Bez voľných slotov',
+              status: L('Bez volnych slotov', 'No free slots'),
               recommended: false,
             }
           }
@@ -336,7 +352,7 @@ export default function BookingFlowPage() {
         )[0]
 
         const segmentLabel = (segment: 'morning' | 'afternoon' | 'evening') =>
-          segment === 'morning' ? 'dopoludnie' : segment === 'afternoon' ? 'popoludnie' : 'večer'
+          segment === 'morning' ? L('dopoludnie', 'morning') : segment === 'afternoon' ? L('popoludnie', 'afternoon') : L('vecer', 'evening')
 
         const suggestedRange =
           leastBusy?.[0] === 'morning'
@@ -346,9 +362,9 @@ export default function BookingFlowPage() {
               : '17:00 – 20:00'
 
         setBestTimeSuggestion(
-          `Odporúčaný čas: ${suggestedRange} • Najmenej obsadené: ${segmentLabel(
+          `${L('Odporucany cas', 'Recommended time')}: ${suggestedRange} • ${L('Najmenej obsadene', 'Least busy')}: ${segmentLabel(
             leastBusy?.[0] || 'afternoon'
-          )} • Najväčší záujem: ${segmentLabel(mostBusy?.[0] || 'evening')}`
+          )} • ${L('Najvacsi zaujem', 'Most demand')}: ${segmentLabel(mostBusy?.[0] || 'evening')}`
         )
       } catch (error) {
         console.error('Resource preview load error:', error)
@@ -359,7 +375,7 @@ export default function BookingFlowPage() {
     return () => {
       active = false
     }
-  }, [selectedServiceId])
+  }, [L, selectedServiceId])
 
   useEffect(() => {
     if (!contentRef.current) return
@@ -390,7 +406,7 @@ export default function BookingFlowPage() {
         if (!active) return
 
         if (todayTime) {
-          setNearestFreeTerm(`Najbližší voľný termín: dnes o ${todayTime.slice(0, 5)}`)
+          setNearestFreeTerm(`${L('Najblizsi volny termin', 'Nearest free slot')}: ${L('dnes', 'today')} ${todayTime.slice(0, 5)}`)
           return
         }
 
@@ -398,7 +414,7 @@ export default function BookingFlowPage() {
         if (!active) return
 
         if (tomorrowTime) {
-          setNearestFreeTerm(`Dnes už nie sú voľné sloty. Najbližší termín: zajtra o ${tomorrowTime.slice(0, 5)}`)
+          setNearestFreeTerm(`${L('Dnes uz nie su volne sloty', 'No free slots left today')}. ${L('Najblizsi termin', 'Nearest slot')}: ${L('zajtra', 'tomorrow')} ${tomorrowTime.slice(0, 5)}`)
           return
         }
 
@@ -411,16 +427,16 @@ export default function BookingFlowPage() {
           if (!active) return
           setNearestFreeTerm(
             nextTime
-              ? `Najbližší voľný termín: ${nextAvailable} o ${nextTime.slice(0, 5)}`
-              : 'Dnes už nie sú voľné sloty.'
+              ? `${L('Najblizsi volny termin', 'Nearest free slot')}: ${nextAvailable} ${nextTime.slice(0, 5)}`
+              : L('Dnes uz nie su volne sloty.', 'No free slots left today.')
           )
           return
         }
 
-        setNearestFreeTerm('Dnes už nie sú voľné sloty.')
+        setNearestFreeTerm(L('Dnes uz nie su volne sloty.', 'No free slots left today.'))
       } catch (error) {
         console.error('Nearest term load error:', error)
-        if (active) setNearestFreeTerm('Dnes už nie sú voľné sloty.')
+        if (active) setNearestFreeTerm(L('Dnes uz nie su volne sloty.', 'No free slots left today.'))
       }
     }
 
@@ -428,7 +444,7 @@ export default function BookingFlowPage() {
     return () => {
       active = false
     }
-  }, [selectedServiceId, availabilityByDay])
+  }, [L, selectedServiceId, availabilityByDay])
 
   useEffect(() => {
     if (step !== 3 || !selectedResourceId || !selectedStartTime || !selectedEndTime) {
@@ -454,12 +470,12 @@ export default function BookingFlowPage() {
         window.clearInterval(timer)
         resetSelection()
         setHoldExpiresAt(null)
-        toast.error('Čas držania termínu vypršal. Vyberte prosím nový termín.')
+        toast.error(L('Cas drzania terminu vyprsal. Vyberte prosim novy termin.', 'Slot hold expired. Please pick a new time.'))
       }
     }, 1000)
 
     return () => window.clearInterval(timer)
-  }, [holdExpiresAt, step, resetSelection])
+  }, [L, holdExpiresAt, step, resetSelection])
 
   const selectedService = useMemo(
     () => services.find((service) => service.id === selectedServiceId) || null,
@@ -521,7 +537,7 @@ export default function BookingFlowPage() {
 
       if (!response.ok) {
         setSlotsData(null)
-        setSlotError(payload?.error || 'Nepodarilo sa načítať sloty')
+        setSlotError(payload?.error || L('Nepodarilo sa nacitat sloty', 'Failed to load slots'))
         return
       }
 
@@ -529,7 +545,7 @@ export default function BookingFlowPage() {
         const fallback: SlotsApiResponse = {
           service: {
             id: serviceId,
-            name: selectedService?.name || 'Služba',
+            name: selectedService?.name || L('Sluzba', 'Service'),
             category: 'other',
             duration_minutes: selectedService?.duration_minutes,
           },
@@ -548,11 +564,11 @@ export default function BookingFlowPage() {
     } catch (error) {
       console.error('Slots load error:', error)
       setSlotsData(null)
-      setSlotError('Nepodarilo sa načítať sloty')
+      setSlotError(L('Nepodarilo sa nacitat sloty', 'Failed to load slots'))
     } finally {
       setLoadingSlots(false)
     }
-  }, [selectedService, resetSelection])
+  }, [L, selectedService, resetSelection])
 
   const handleDateContinue = useCallback(() => {
     if (!selectedServiceId || !selectedDateDraft) return
@@ -576,7 +592,7 @@ export default function BookingFlowPage() {
 
   function findContinuousSelection(resourceId: string, startTime: string): SelectionResult {
     const startIndex = times.indexOf(startTime)
-    if (startIndex < 0) return { ok: false, reason: 'Neplatný začiatok slotu' }
+    if (startIndex < 0) return { ok: false, reason: L('Neplatny zaciatok slotu', 'Invalid slot start time') }
 
     const starts: string[] = []
     let endTime = startTime
@@ -584,12 +600,24 @@ export default function BookingFlowPage() {
     for (let offset = 0; offset < durationHours; offset += 1) {
       const currentStart = times[startIndex + offset]
       if (!currentStart) {
-        return { ok: false, reason: `Nie je možné rezervovať ${durationHours} h od ${startTime.slice(0, 5)}` }
+        return {
+          ok: false,
+          reason: L(
+            `Nie je mozne rezervovat ${durationHours} h od ${startTime.slice(0, 5)}`,
+            `Cannot book ${durationHours}h from ${startTime.slice(0, 5)}`
+          ),
+        }
       }
 
       const slot = slotMap.get(`${resourceId}_${currentStart}`)
       if (!slot || !slot.available) {
-        return { ok: false, reason: `Nie je možné rezervovať ${durationHours} h od ${startTime.slice(0, 5)}` }
+        return {
+          ok: false,
+          reason: L(
+            `Nie je mozne rezervovat ${durationHours} h od ${startTime.slice(0, 5)}`,
+            `Cannot book ${durationHours}h from ${startTime.slice(0, 5)}`
+          ),
+        }
       }
 
       starts.push(currentStart)
@@ -616,10 +644,10 @@ export default function BookingFlowPage() {
     setResumeMessage(null)
 
     try {
-      const resourceName = slotsData?.resources.find((resource) => resource.id === resourceId)?.name || 'Zdroj'
+      const resourceName = slotsData?.resources.find((resource) => resource.id === resourceId)?.name || L('Zdroj', 'Resource')
       const payload = {
         serviceId: selectedServiceId,
-        serviceName: selectedService?.name || 'Služba',
+        serviceName: selectedService?.name || L('Sluzba', 'Service'),
         resourceId,
         resourceName,
         date: selectedDateDraft || selectedDate || '',
@@ -665,10 +693,10 @@ export default function BookingFlowPage() {
       })
       window.localStorage.setItem('sportbook:waitlist', JSON.stringify(list))
       setWaitlistAdded(true)
-      toast.success('Ak sa slot uvoľní, budeme vás informovať.')
+      toast.success(L('Ak sa slot uvolni, budeme vas informovat.', 'If a slot becomes free, we will notify you.'))
     } catch (error) {
       console.error('Waitlist error:', error)
-      toast.error('Nepodarilo sa pridať na čakaciu listinu')
+      toast.error(L('Nepodarilo sa pridat na cakaciu listinu', 'Failed to add to waitlist'))
     }
   }
 
@@ -708,12 +736,12 @@ export default function BookingFlowPage() {
       .sort(([a], [b]) => (a > b ? 1 : -1))[0]?.[0]
 
     return [
-      { label: 'Dnes', value: toISODate(today) },
-      { label: 'Zajtra', value: toISODate(tomorrow) },
-      { label: 'Tento víkend', value: toISODate(weekend) },
-      { label: 'Najbližší voľný deň', value: nextAvailable || null },
+      { label: L('Dnes', 'Today'), value: toISODate(today) },
+      { label: L('Zajtra', 'Tomorrow'), value: toISODate(tomorrow) },
+      { label: L('Tento vikend', 'This weekend'), value: toISODate(weekend) },
+      { label: L('Najblizsi volny den', 'Nearest available day'), value: nextAvailable || null },
     ]
-  }, [availabilityByDay])
+  }, [L, availabilityByDay])
 
   const nearestAvailableDays = useMemo(() => {
     return Object.entries(availabilityByDay)
@@ -755,7 +783,7 @@ export default function BookingFlowPage() {
     items.sort((a, b) => {
       const aStats = resourceStats.get(a.id)
       const bStats = resourceStats.get(b.id)
-      if (resourceSort === 'name') return a.name.localeCompare(b.name, 'sk')
+      if (resourceSort === 'name') return a.name.localeCompare(b.name, lang === 'sk' ? 'sk' : 'en')
       if (resourceSort === 'availability') {
         return (bStats?.availableCount || 0) - (aStats?.availableCount || 0)
       }
@@ -764,7 +792,7 @@ export default function BookingFlowPage() {
       return aNearest.localeCompare(bNearest)
     })
     return items
-  }, [resourceSort, resourceStats, slotsData])
+  }, [lang, resourceSort, resourceStats, slotsData])
 
   const selectedDateAvailability = selectedDateDraft ? availabilityByDay[selectedDateDraft] || 0 : 0
   const dayTotalSlots = Math.max(resourcePreview.length * 12, 1)
@@ -783,20 +811,20 @@ export default function BookingFlowPage() {
   const canContinueSlot = Boolean(selectedResourceId && selectedStartTime && selectedEndTime)
   const primaryButtonText =
     step === 1
-      ? 'Vyberte službu'
+      ? L('Vyberte sluzbu', 'Select service')
       : step === 2
         ? selectedDateDraft
-          ? 'Pokračovať'
-          : 'Vyberte dátum'
+          ? L('Pokracovat', 'Continue')
+          : L('Vyberte datum', 'Select date')
         : canContinueSlot
-          ? 'Pokračovať'
-          : 'Vyberte čas'
+          ? L('Pokracovat', 'Continue')
+          : L('Vyberte cas', 'Select time')
   const holdMinutes = String(Math.floor(holdSecondsLeft / 60)).padStart(2, '0')
   const holdSeconds = String(holdSecondsLeft % 60).padStart(2, '0')
-  const summaryDate = selectedDateDraft || selectedDate || 'nevybraný'
+  const summaryDate = selectedDateDraft || selectedDate || L('nevybrany', 'not selected')
   const summaryTime = selectedStartTime && selectedEndTime
-    ? `${selectedStartTime.slice(0, 5)} – ${selectedEndTime.slice(0, 5)}`
-    : 'nevybraný'
+    ? `${selectedStartTime.slice(0, 5)} - ${selectedEndTime.slice(0, 5)}`
+    : L('nevybrany', 'not selected')
   const summaryDuration = selectedStarts.length ? `${selectedStarts.length} h` : `${durationHours} h`
   const selectedHours = selectedStarts.length || durationHours
   const summaryTotalPrice = selectedService ? selectedService.price * selectedHours : 0
@@ -816,30 +844,30 @@ export default function BookingFlowPage() {
   }, [step, selectedDateDraft, canContinueSlot, handleDateContinue, handleProceedToDetails])
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+    <div className="mx-auto max-w-7xl overflow-x-hidden px-4 py-6 pb-24 sm:px-6 sm:py-8 sm:pb-8 lg:px-8">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 xl:gap-8">
         <aside className="space-y-4 lg:col-span-3 lg:sticky lg:top-24 lg:self-start">
           <BookingStepper currentStep={step} />
           <div className="card space-y-2 p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Rezervačný prehľad</p>
-            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">Služba:</span> {selectedService?.name || 'nevybraná'}</p>
-            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">Zdroj:</span> {selectedResource?.name || 'nevybraný'}</p>
-            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">Dátum:</span> {summaryDate}</p>
-            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">Čas:</span> {summaryTime}</p>
-            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">Dĺžka:</span> {summaryDuration}</p>
-            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">Cena:</span> {selectedService ? `${selectedService.price.toFixed(2)} € / hod.` : '—'}</p>
-            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">Spolu:</span> {selectedService ? `${summaryTotalPrice.toFixed(2)} €` : '—'}</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{L('Rezervacny prehlad', 'Booking summary')}</p>
+            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{L('Sluzba', 'Service')}:</span> {selectedService?.name || L('nevybrana', 'not selected')}</p>
+            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{L('Zdroj', 'Resource')}:</span> {selectedResource?.name || L('nevybrany', 'not selected')}</p>
+            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{L('Datum', 'Date')}:</span> {summaryDate}</p>
+            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{L('Cas', 'Time')}:</span> {summaryTime}</p>
+            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{L('Dlzka', 'Duration')}:</span> {summaryDuration}</p>
+            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{L('Cena', 'Price')}:</span> {selectedService ? `${selectedService.price.toFixed(2)} EUR / h` : '-'}</p>
+            <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{L('Spolu', 'Total')}:</span> {selectedService ? `${summaryTotalPrice.toFixed(2)} EUR` : '-'}</p>
             {step === 3 ? (
-              <div className="rounded-xl border border-blue-200 bg-blue-50 p-2 text-xs text-blue-700">
+              <div className="rounded-xl border border-blue-200 bg-blue-50/75 p-2 text-xs text-blue-700">
                 {canContinueSlot
-                  ? `Vybraný termín držíme ${holdMinutes}:${holdSeconds} min`
-                  : 'Vyberte slot, potom pokračujte do detailu rezervácie.'}
+                  ? `${L('Vybrany termin drzime', 'Holding selected slot for')} ${holdMinutes}:${holdSeconds} min`
+                  : L('Vyberte slot, potom pokracujte do detailu rezervacie.', 'Select a slot and continue to booking details.')}
               </div>
             ) : null}
           </div>
         </aside>
 
-        <section ref={contentRef} className="card p-6 sm:p-7 lg:col-span-9">
+        <section ref={contentRef} className="card p-5 sm:p-7 lg:col-span-9">
           {step === 1 &&
             (loadingServices ? (
               <div className="space-y-3" aria-hidden="true">
@@ -858,14 +886,14 @@ export default function BookingFlowPage() {
           {step === 2 && (
             <div className="animate-section-in max-w-[920px]">
               {resumeMessage ? (
-                <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+                <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm text-blue-800">
                   <span>{resumeMessage}</span>
                   <button
                     type="button"
                     onClick={() => setResumeMessage(null)}
                     className="text-xs font-semibold text-blue-700 hover:text-blue-900"
                   >
-                    Zavrieť
+                    {L('Zavriet', 'Close')}
                   </button>
                 </div>
               ) : null}
@@ -877,11 +905,11 @@ export default function BookingFlowPage() {
                     type="button"
                     onClick={() => {
                       if (!item.value) {
-                        toast.error('Zatiaľ nemáme dostupný voľný deň')
+                        toast.error(L('Zatial nemame dostupny volny den', 'No available day found yet'))
                         return
                       }
                       if ((availabilityByDay[item.value] || 0) === 0) {
-                        toast.error('V tento deň nie sú dostupné žiadne termíny. Prosím vyberte iný dátum.')
+                        toast.error(L('V tento den nie su dostupne ziadne terminy. Prosim vyberte iny datum.', 'No available slots for this day. Please pick another date.'))
                         return
                       }
                       setSelectedDateDraft(item.value)
@@ -907,7 +935,7 @@ export default function BookingFlowPage() {
                   }
                 >
                   <CalendarDays className="h-3.5 w-3.5" />
-                  Kalendár
+                  {L('Kalendar', 'Calendar')}
                 </button>
                 <button
                   type="button"
@@ -921,7 +949,7 @@ export default function BookingFlowPage() {
                   }
                 >
                   <Clock3 className="h-3.5 w-3.5" />
-                  Najbližšie dni
+                  {L('Najblizsie dni', 'Closest days')}
                 </button>
               </div>
 
@@ -936,8 +964,8 @@ export default function BookingFlowPage() {
                     />
                   ) : (
                     <div className="card p-5">
-                      <h2 className="text-2xl font-bold text-slate-900">Najbližšie dostupné dni</h2>
-                      <p className="mt-2 text-sm text-slate-600">Rýchly výber bez kalendára.</p>
+                      <h2 className="text-2xl font-bold text-slate-900">{L('Najblizsie dostupne dni', 'Closest available days')}</h2>
+                      <p className="mt-2 text-sm text-slate-600">{L('Rychly vyber bez kalendara.', 'Quick selection without calendar.')}</p>
                       <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
                         {nearestAvailableDays.length > 0 ? (
                           nearestAvailableDays.map((day) => (
@@ -954,12 +982,12 @@ export default function BookingFlowPage() {
                               }
                             >
                               <p className="font-semibold">{day.date}</p>
-                              <p className="mt-1 text-xs text-slate-500">Dostupné sloty: {day.count}</p>
+                              <p className="mt-1 text-xs text-slate-500">{L('Dostupne sloty', 'Available slots')}: {day.count}</p>
                             </button>
                           ))
                         ) : (
                           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
-                            Zatiaľ nemáme dostupné dni v horizonte 90 dní.
+                            {L('Zatial nemame dostupne dni v horizonte 90 dni.', 'No available days in the next 90 days yet.')}
                           </div>
                         )}
                       </div>
@@ -968,86 +996,86 @@ export default function BookingFlowPage() {
                 </div>
 
                 <aside className="space-y-3 xl:pt-2">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Dostupnosť</p>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_10px_22px_rgba(15,23,42,0.05)]">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{L('Dostupnost', 'Availability')}</p>
                     <p className="mt-1.5 text-sm text-slate-700">
                       {quickDates[3]?.value
-                        ? `Najbližší voľný deň: ${quickDates[3].value}`
-                        : 'Zatiaľ nemáme dostupný voľný deň v aktuálnom horizonte.'}
+                        ? `${L('Najblizsi volny den', 'Nearest available day')}: ${quickDates[3].value}`
+                        : L('Zatial nemame dostupny volny den v aktualnom horizonte.', 'No available day found in the current horizon.')}
                     </p>
                     {nearestFreeTerm ? <p className="mt-1.5 text-xs text-slate-500">{nearestFreeTerm}</p> : null}
                     <div className="my-3 h-px w-full bg-slate-200/70" />
-                    <div className="rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-slate-700">
-                      <p className="font-semibold text-slate-900">Vybraný dátum</p>
-                      <p className="mt-1.5">{selectedDateDraft || 'Zatiaľ nevybraný'}</p>
+                    <div className="rounded-xl border border-blue-200 bg-blue-50/75 p-3 text-sm text-slate-700">
+                      <p className="font-semibold text-slate-900">{L('Vybrany datum', 'Selected date')}</p>
+                      <p className="mt-1.5">{selectedDateDraft || L('Zatial nevybrany', 'Not selected yet')}</p>
                       {selectedDateDraft ? (
-                        <p className="mt-1 text-xs text-blue-700">Dostupné sloty: {availabilityByDay[selectedDateDraft] || 0}</p>
+                        <p className="mt-1 text-xs text-blue-700">{L('Dostupne sloty', 'Available slots')}: {availabilityByDay[selectedDateDraft] || 0}</p>
                       ) : null}
                     </div>
                     {selectedDateDraft ? (
                       <div className="mt-3">
                         <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
-                          <span>Obsadenosť dňa</span>
+                          <span>{L('Obsadenost dna', 'Day occupancy')}</span>
                           <span className="font-semibold text-slate-900">{dayOccupancyPercent}%</span>
                         </div>
                         <div className="h-2 rounded-full bg-slate-100">
                           <div className="h-2 rounded-full bg-blue-600" style={{ width: `${dayOccupancyPercent}%` }} />
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">Dostupné sloty: {selectedDateAvailability}</div>
+                        <div className="mt-1 text-xs text-slate-500">{L('Dostupne sloty', 'Available slots')}: {selectedDateAvailability}</div>
                       </div>
                     ) : null}
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Prehľad zdrojov</p>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{L('Prehlad zdrojov', 'Resource overview')}</p>
                     <div className="mt-2 space-y-2">
                       {resourcePreview.length > 0 ? (
                         resourcePreview.slice(0, 1).map((item) => (
-                          <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                            <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50/80 p-2.5">
                             <div className="flex items-center justify-between gap-2">
                               <p className="font-semibold text-slate-900">{item.name}</p>
                               {item.recommended ? (
                                 <span className="inline-flex items-center rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-semibold text-white">
-                                  Odporúčané
+                                  {L('Odporucane', 'Recommended')}
                                 </span>
                               ) : null}
                             </div>
                             <p className="mt-1 text-[11px] text-slate-600">
-                              Najbližší voľný: {item.nearestFree ? item.nearestFree.slice(0, 5) : '—'}
+                              {L('Najblizsi volny', 'Nearest free')}: {item.nearestFree ? item.nearestFree.slice(0, 5) : '-'}
                             </p>
-                              <p className="text-[11px] text-slate-600">Voľné sloty dnes: {item.freeSlotsToday}</p>
+                              <p className="text-[11px] text-slate-600">{L('Volne sloty dnes', 'Free slots today')}: {item.freeSlotsToday}</p>
                             </div>
                           ))
                         ) : (
-                          <p className="text-xs text-slate-500">Prehľad bude dostupný po výbere služby.</p>
+                          <p className="text-xs text-slate-500">{L('Prehlad bude dostupny po vybere sluzby.', 'Preview becomes available after selecting service.')}</p>
                         )}
                     </div>
                     {resourcePreview.length > 1 ? (
                       <details className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
                         <summary className="cursor-pointer list-none text-[11px] font-semibold text-blue-700">
-                          Zobraziť ďalšie zdroje
+                          {L('Zobrazit dalsie zdroje', 'Show more resources')}
                         </summary>
                         <div className="mt-2 space-y-2">
                           {resourcePreview.slice(1, 3).map((item) => (
                             <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-2">
                               <p className="font-semibold text-slate-900">{item.name}</p>
                               <p className="text-[11px] text-slate-600">
-                                Najbližší voľný: {item.nearestFree ? item.nearestFree.slice(0, 5) : '—'}
+                                {L('Najblizsi volny', 'Nearest free')}: {item.nearestFree ? item.nearestFree.slice(0, 5) : '-'}
                               </p>
-                              <p className="text-[11px] text-slate-600">Voľné sloty dnes: {item.freeSlotsToday}</p>
+                              <p className="text-[11px] text-slate-600">{L('Volne sloty dnes', 'Free slots today')}: {item.freeSlotsToday}</p>
                             </div>
                           ))}
                         </div>
                       </details>
                     ) : null}
 
-                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Rezervačné pravidlá</p>
+                    <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/80 p-2.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{L('Rezervacne pravidla', 'Booking rules')}</p>
                       <ul className="mt-1.5 space-y-1 text-[11px] text-slate-600">
-                        <li>• minimálne 1 hodina</li>
-                        <li>• maximálne 3 hodiny</li>
-                        <li>• rezervácia možná 90 dní dopredu</li>
-                        <li>• zrušenie najneskôr 24h pred termínom</li>
+                        <li>{L('• minimalne 1 hodina', '• minimum 1 hour')}</li>
+                        <li>{L('• maximalne 3 hodiny', '• maximum 3 hours')}</li>
+                        <li>{L('• rezervacia mozna 90 dni dopredu', '• booking up to 90 days in advance')}</li>
+                        <li>{L('• zrusenie najneskor 24h pred terminom', '• cancellation no later than 24h before start')}</li>
                       </ul>
                     </div>
                   </div>
@@ -1055,15 +1083,15 @@ export default function BookingFlowPage() {
               </div>
 
               <div className="mt-4">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-700">
-                  <span className="font-semibold text-slate-900">Odporúčanie:</span>{' '}
-                  {bestTimeSuggestion || 'Čakáme na dáta dostupnosti.'}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-2.5 text-xs text-slate-700">
+                  <span className="font-semibold text-slate-900">{L('Odporucanie', 'Suggestion')}:</span>{' '}
+                  {bestTimeSuggestion || L('Cakame na data dostupnosti.', 'Waiting for availability data.')}
                 </div>
               </div>
 
               <div id="booking-step-actions" className="mt-6 flex flex-wrap items-center gap-3">
                 <Button variant="secondary" onClick={() => setStep(1)}>
-                  Späť
+                  {L('Spat', 'Back')}
                 </Button>
                 <Button onClick={handleDateContinue} disabled={!selectedDateDraft}>
                   {primaryButtonText}
@@ -1076,7 +1104,7 @@ export default function BookingFlowPage() {
             <div ref={slotGridRef} className="animate-section-in">
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="text-2xl font-bold text-slate-900">Výber termínu</h2>
+                  <h2 className="text-2xl font-bold text-slate-900">{L('Vyber terminu', 'Select time slot')}</h2>
                   <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1">
                     {[1, 2, 3].map((hours) => (
                       <button
@@ -1099,7 +1127,7 @@ export default function BookingFlowPage() {
                 </div>
 
                 <div className="grid gap-3 lg:grid-cols-2">
-                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
@@ -1141,7 +1169,7 @@ export default function BookingFlowPage() {
                         }
                       >
                         <Filter className="h-3.5 w-3.5" />
-                        Iba voľné sloty
+                        {L('Iba volne sloty', 'Only free slots')}
                       </button>
                       <button
                         type="button"
@@ -1154,37 +1182,39 @@ export default function BookingFlowPage() {
                             : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700')
                         }
                       >
-                        Kompaktné zobrazenie
+                        {L('Kompaktne zobrazenie', 'Compact view')}
                       </button>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                     <div className="grid gap-2 sm:grid-cols-2">
                       <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
-                        Zoradiť zdroje
-                        <select
+                        {L('Zoradit zdroje', 'Sort resources')}
+                        <AnimatedSelect
                           value={resourceSort}
-                          onChange={(event) => setResourceSort(event.target.value as ResourceSort)}
-                          className="control-soft select-soft rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700"
-                        >
-                          <option value="name">Názov</option>
-                          <option value="nearest">Najbližší voľný</option>
-                          <option value="availability">Dostupnosť dnes</option>
-                        </select>
+                          onChange={(nextValue) => setResourceSort(nextValue as ResourceSort)}
+                          options={[
+                            { value: 'name', label: L('Nazov', 'Name') },
+                            { value: 'nearest', label: L('Najblizsi volny', 'Nearest free') },
+                            { value: 'availability', label: L('Dostupnost dnes', 'Availability today') },
+                          ]}
+                          buttonClassName="rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700"
+                        />
                       </label>
                       <label className="flex flex-col gap-1 text-xs font-semibold text-slate-500">
-                        Čas dňa
-                        <select
+                        {L('Cas dna', 'Time of day')}
+                        <AnimatedSelect
                           value={timeFilter}
-                          onChange={(event) => setTimeFilter(event.target.value as TimeFilter)}
-                          className="control-soft select-soft rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700"
-                        >
-                          <option value="all">Všetko</option>
-                          <option value="morning">Ráno (09:00–12:00)</option>
-                          <option value="afternoon">Popoludnie (12:00–17:00)</option>
-                          <option value="evening">Večer (17:00–21:00)</option>
-                        </select>
+                          onChange={(nextValue) => setTimeFilter(nextValue as TimeFilter)}
+                          options={[
+                            { value: 'all', label: L('Vsetko', 'All') },
+                            { value: 'morning', label: L('Rano (09:00-12:00)', 'Morning (09:00-12:00)') },
+                            { value: 'afternoon', label: L('Popoludnie (12:00-17:00)', 'Afternoon (12:00-17:00)') },
+                            { value: 'evening', label: L('Vecer (17:00-21:00)', 'Evening (17:00-21:00)') },
+                          ]}
+                          buttonClassName="rounded-lg px-2 py-1.5 text-xs font-semibold text-slate-700"
+                        />
                       </label>
                     </div>
                     <div className="mt-2">
@@ -1194,7 +1224,7 @@ export default function BookingFlowPage() {
                         className="choice-pill inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700"
                       >
                         <RotateCcw className="h-3.5 w-3.5" />
-                        Resetovať výber
+                        {L('Resetovat vyber', 'Reset selection')}
                       </button>
                     </div>
                   </div>
@@ -1202,7 +1232,7 @@ export default function BookingFlowPage() {
               </div>
 
               {slotError ? (
-                <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{slotError}</div>
+                <div className="mt-5 rounded-xl border border-red-200 bg-red-50/80 p-4 text-sm text-red-700">{slotError}</div>
               ) : null}
 
               <div className="mt-5">
@@ -1237,12 +1267,12 @@ export default function BookingFlowPage() {
                         .filter((item) => !onlyFreeSlots || item.slot?.available)
 
                       return (
-                        <div key={resource.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                        <div key={resource.id} className="rounded-xl border border-slate-200 bg-white p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
                           <div className="mb-2 flex items-center justify-between gap-2">
                             <p className="font-semibold text-slate-900">{resource.name}</p>
                             <p className="text-xs text-slate-500">
-                              Najbližší voľný:{' '}
-                              {resourceStats.get(resource.id)?.nearestFree?.slice(0, 5) || '—'}
+                              {L('Najblizsi volny', 'Nearest free')}:{' '}
+                              {resourceStats.get(resource.id)?.nearestFree?.slice(0, 5) || '-'}
                             </p>
                           </div>
                           <div className="flex flex-wrap gap-2">
@@ -1254,7 +1284,7 @@ export default function BookingFlowPage() {
                                   <button
                                     key={`${resource.id}_${time}`}
                                     type="button"
-                                    title={blockedReasonText(slot?.reason)}
+                                    title={blockedReasonText(slot?.reason, lang)}
                                     onClick={() => {
                                       if (slot?.available) {
                                         handleSlotClick(resource.id, time)
@@ -1263,12 +1293,12 @@ export default function BookingFlowPage() {
                                       }
                                     }}
                                     className={
-                                      'rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all ' +
+                                      'rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-all duration-200 ' +
                                       (selected
                                         ? 'border-blue-700 bg-blue-600 text-white'
                                         : disabled
                                           ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                                          : 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-400 hover:bg-blue-100')
+                                          : 'border-blue-200 bg-blue-50/80 text-blue-700 hover:border-blue-400 hover:bg-blue-100')
                                     }
                                   >
                                     {time.slice(0, 5)}
@@ -1276,7 +1306,7 @@ export default function BookingFlowPage() {
                                 )
                               })
                             ) : (
-                              <p className="text-xs text-slate-500">Žiadne sloty pre aktuálny filter.</p>
+                              <p className="text-xs text-slate-500">{L('Ziadne sloty pre aktualny filter.', 'No slots for current filter.')}</p>
                             )}
                           </div>
                         </div>
@@ -1287,16 +1317,16 @@ export default function BookingFlowPage() {
               </div>
 
               {currentTimeMarker ? (
-                <p className="mt-3 inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                <p className="mt-3 inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
                   <Sparkles className="h-3.5 w-3.5" />
-                  Teraz: {currentTimeMarker.slice(0, 5)}
+                  {L('Teraz', 'Now')}: {currentTimeMarker.slice(0, 5)}
                 </p>
               ) : null}
 
               {blockedSlot ? (
-                <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-                  <p className="font-semibold text-slate-900">Obsadené</p>
-                  <p className="mt-1 text-xs text-slate-500">{blockedReasonText(blockedSlot.reason)}.</p>
+                <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+                  <p className="font-semibold text-slate-900">{L('Obsadene', 'Booked')}</p>
+                  <p className="mt-1 text-xs text-slate-500">{blockedReasonText(blockedSlot.reason, lang)}.</p>
                   {suggestedTimes.length > 0 ? (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {suggestedTimes.map((time) => (
@@ -1304,30 +1334,30 @@ export default function BookingFlowPage() {
                           key={time}
                           type="button"
                           onClick={() => handleSlotClick(blockedSlot.resourceId, time)}
-                          className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all hover:border-blue-400 hover:bg-blue-100"
+                          className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 transition-all duration-200 hover:border-blue-400 hover:bg-blue-100/90"
                         >
                           {time.slice(0, 5)}
                         </button>
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-3 text-xs text-slate-500">Najbližšie voľné časy sa nenašli.</p>
+                    <p className="mt-3 text-xs text-slate-500">{L('Najblizsie volne casy sa nenasli.', 'No nearby free times found.')}</p>
                   )}
 
                   <div className="mt-4">
                     <Button size="sm" variant="secondary" onClick={addToWaitlist} disabled={waitlistAdded}>
-                      {waitlistAdded ? 'Ste na čakacej listine' : 'Pridať na čakaciu listinu'}
+                      {waitlistAdded ? L('Ste na cakacej listine', 'You are on the waitlist') : L('Pridat na cakaciu listinu', 'Add to waitlist')}
                     </Button>
                   </div>
                 </div>
               ) : null}
 
-              <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700">
+              <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50/80 p-4 text-sm text-slate-700">
                 {canContinueSlot ? (
                   <div className="space-y-1">
                     <p>
-                      <span className="font-semibold">Vybraný termín:</span>{' '}
-                      {selectedResource?.name || 'Zdroj'} - {selectedDate} - {selectedStartTime?.slice(0, 5)} –{' '}
+                      <span className="font-semibold">{L('Vybrany termin', 'Selected slot')}:</span>{' '}
+                      {selectedResource?.name || L('Zdroj', 'Resource')} - {selectedDate} - {selectedStartTime?.slice(0, 5)} -{' '}
                       {selectedEndTime?.slice(0, 5)} ({durationHours} h)
                     </p>
                     <button
@@ -1335,24 +1365,24 @@ export default function BookingFlowPage() {
                       onClick={resetSelection}
                       className="text-xs font-semibold text-blue-700 hover:text-blue-900"
                     >
-                      Resetovať výber
+                      {L('Resetovat vyber', 'Reset selection')}
                     </button>
                     <p className="text-xs text-slate-700">
-                      Rozpis ceny: {selectedHours} h × {selectedService?.price.toFixed(2) || '0.00'} € ={' '}
-                      <span className="font-semibold text-slate-900">{summaryTotalPrice.toFixed(2)} €</span>
+                      {L('Rozpis ceny', 'Price breakdown')}: {selectedHours} h x {selectedService?.price.toFixed(2) || '0.00'} EUR ={' '}
+                      <span className="font-semibold text-slate-900">{summaryTotalPrice.toFixed(2)} EUR</span>
                     </p>
                     <p className="pt-1 text-xs text-blue-700">
-                      Vybraný termín držíme {holdMinutes}:{holdSeconds} min
+                      {L('Vybrany termin drzime', 'Holding selected slot for')} {holdMinutes}:{holdSeconds} min
                     </p>
                   </div>
                 ) : (
-                  <p>Vyberte slot v gride. Presmerovanie nastane až po kliknutí na „Pokračovať“.</p>
+                  <p>{L('Vyberte slot v gride. Presmerovanie nastane az po kliknuti na Pokracovat.', 'Select a slot in grid. Redirect happens only after pressing Continue.')}</p>
                 )}
               </div>
 
               <div className="mt-8 flex flex-wrap justify-between gap-3">
                 <Button variant="secondary" onClick={() => setStep(2)}>
-                  Späť
+                  {L('Spat', 'Back')}
                 </Button>
                 <Button onClick={handleProceedToDetails} disabled={!canContinueSlot}>
                   {primaryButtonText}
@@ -1366,12 +1396,12 @@ export default function BookingFlowPage() {
       </div>
 
       {canContinueSlot && step === 3 ? (
-        <div className="fixed bottom-4 left-4 right-4 z-40 rounded-2xl border border-blue-200 bg-white/95 p-3 shadow-xl backdrop-blur md:hidden">
-          <p className="text-xs font-semibold text-slate-900">{selectedService?.name || 'Služba'}</p>
+        <div className="fixed bottom-4 left-4 right-4 z-40 rounded-2xl border border-blue-200 bg-white/95 p-3 shadow-[0_18px_38px_rgba(15,23,42,0.16)] backdrop-blur md:hidden">
+          <p className="text-xs font-semibold text-slate-900">{selectedService?.name || L('Sluzba', 'Service')}</p>
           <p className="text-xs text-slate-600">
-            {summaryDate} • {selectedResource?.name || 'Zdroj'} • {selectedStartTime?.slice(0, 5)} – {selectedEndTime?.slice(0, 5)}
+            {summaryDate} • {selectedResource?.name || L('Zdroj', 'Resource')} • {selectedStartTime?.slice(0, 5)} - {selectedEndTime?.slice(0, 5)}
           </p>
-          <p className="mt-1 text-xs text-blue-700">Cena spolu {summaryTotalPrice.toFixed(2)} €</p>
+          <p className="mt-1 text-xs text-blue-700">{L('Cena spolu', 'Total price')} {summaryTotalPrice.toFixed(2)} EUR</p>
           <Button className="mt-2 w-full" onClick={handleProceedToDetails}>
             {primaryButtonText}
           </Button>

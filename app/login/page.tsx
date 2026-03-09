@@ -1,4 +1,4 @@
-﻿'use client'
+'use client'
 
 import Link from 'next/link'
 import { Suspense, useState } from 'react'
@@ -7,10 +7,13 @@ import { Mail } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/Button'
 import { supabase } from '@/lib/supabaseClient'
+import { useI18n } from '@/components/layout/LanguageProvider'
 
 function LoginContent() {
   const searchParams = useSearchParams()
   const redirect = searchParams.get('redirect') || '/admin'
+  const { lang } = useI18n()
+  const L = (skText: string, enText: string) => (lang === 'sk' ? skText : enText)
 
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
@@ -20,7 +23,7 @@ function LoginContent() {
     e.preventDefault()
 
     if (!email) {
-      toast.error('Prosím zadaj email')
+      toast.error(L('Prosim zadajte email', 'Please enter an email'))
       return
     }
 
@@ -39,10 +42,10 @@ function LoginContent() {
       if (error) throw error
 
       setSubmitted(true)
-      toast.success('Skontroluj svoj email na magic link')
+      toast.success(L('Skontrolujte email pre magic link', 'Check your email for a magic link'))
     } catch (error: unknown) {
       console.error('Login error:', error)
-      const message = error instanceof Error ? error.message : 'Chyba pri prihlasovaní'
+      const message = error instanceof Error ? error.message : L('Chyba pri prihlaseni', 'Login error')
       toast.error(message)
     } finally {
       setLoading(false)
@@ -55,8 +58,8 @@ function LoginContent() {
         {!submitted ? (
           <>
             <div className="mb-10 text-center">
-              <h1 className="mb-2 text-3xl font-bold">Admin prístup</h1>
-              <p className="text-gray-600">Prihlás sa pomocou svojho emailu</p>
+              <h1 className="mb-2 text-3xl font-bold">{L('Admin pristup', 'Admin access')}</h1>
+              <p className="text-gray-600">{L('Prihlaste sa pomocou emailu', 'Sign in with your email')}</p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
@@ -76,33 +79,36 @@ function LoginContent() {
                   />
                 </div>
                 <p className="mt-2 text-xs text-gray-500">
-                  Len administrátori v schválenom zozname majú prístup.
+                  {L('Pristup maju iba admini v povolenom zozname.', 'Only allowlisted admins can access this area.')}
                 </p>
               </div>
 
               <Button size="lg" className="w-full" isLoading={loading} type="submit">
-                Poslať Magic Link
+                {L('Poslat magic link', 'Send magic link')}
               </Button>
             </form>
 
             <div className="mt-6 text-center">
               <Link href="/" className="text-sm text-blue-600 hover:text-blue-700">
-                Späť na domov
+                {L('Spat na domov', 'Back to home')}
               </Link>
             </div>
           </>
         ) : (
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-8 text-center">
             <Mail className="mx-auto mb-4 h-12 w-12 text-blue-600" />
-            <h2 className="mb-2 text-2xl font-bold">Skontroluj svoj email</h2>
+            <h2 className="mb-2 text-2xl font-bold">{L('Skontrolujte email', 'Check your email')}</h2>
             <p className="mb-4 text-gray-600">
-              Poslali sme ti magic link na <span className="font-bold">{email}</span>
+              {L('Poslali sme magic link na', 'Magic link was sent to')} <span className="font-bold">{email}</span>
             </p>
             <p className="mb-6 text-sm text-gray-600">
-              Klikni na odkaz v emaile, aby si sa prihlásil. Ak ho nevidíš, skontroluj spam.
+              {L(
+                'Kliknite na odkaz v emaile. Ak ho nevidite, skontrolujte spam.',
+                "Open the link in your email. If you do not see it, check the spam folder."
+              )}
             </p>
             <Button variant="secondary" onClick={() => setSubmitted(false)}>
-              Skúsiť iný email
+              {L('Skusit iny email', 'Try another email')}
             </Button>
           </div>
         )}
@@ -116,7 +122,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="flex min-h-screen items-center justify-center">
-          <div className="inline-block animate-spin">⏳</div>
+          <div className="text-sm font-semibold text-slate-600">Loading...</div>
         </div>
       }
     >

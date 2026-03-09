@@ -85,7 +85,7 @@ async function getMonthAvailability(
   month: string
 ) {
   if (!/^\d{4}-\d{2}$/.test(month)) {
-    return jsonError(400, 'Neplatný formát mesiaca')
+    return jsonError(400, 'Invalid month format')
   }
 
   const start = `${month}-01`
@@ -105,7 +105,7 @@ async function getMonthAvailability(
 
   if (error) {
     console.error('Month availability error:', error)
-    return jsonError(500, 'Nepodarilo sa načítať mesačnú dostupnosť')
+    return jsonError(500, 'Failed to load monthly availability')
   }
 
   const perDay = new Map<string, Set<string>>()
@@ -133,14 +133,14 @@ export async function GET(req: Request) {
   const month = searchParams.get('month')
 
   if (!serviceId) {
-    return jsonError(400, 'Chýba serviceId')
+    return jsonError(400, 'Missing serviceId')
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !anonKey) {
-    return jsonError(500, 'Chýbajú Supabase premenné')
+    return jsonError(500, 'Missing Supabase environment variables')
   }
 
   const supabase = createClient(supabaseUrl, anonKey)
@@ -150,7 +150,7 @@ export async function GET(req: Request) {
   }
 
   if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return jsonError(400, 'Chýba dátum alebo má zlý formát')
+    return jsonError(400, 'Missing date or invalid date format')
   }
 
   try {
@@ -161,11 +161,11 @@ export async function GET(req: Request) {
       .maybeSingle()
 
     if (serviceError) throw serviceError
-    if (!service) return jsonError(404, 'Služba neexistuje')
+    if (!service) return jsonError(404, 'Service not found')
 
     const { data: resources, error: resourcesError } = await supabase
       .from('resources')
-      .select('id,name,kind,sort_order')
+      .select('id,service_id,name,kind,sort_order')
       .eq('service_id', serviceId)
       .eq('is_active', true)
       .order('sort_order', { ascending: true })
@@ -213,9 +213,12 @@ export async function GET(req: Request) {
       })
     })
 
-    const bookedSet = new Set(
-      booked.map((row) => `${row.resource_id}_${toTime(row.start_time)}_${toTime(row.end_time)}`)
-    )
+    const bookedByResource = new Map<string, Array<{ start: number; end: number }>>()
+    booked.forEach((row) => {
+      const list = bookedByResource.get(row.resource_id) || []
+      list.push({ start: minutesOf(toTime(row.start_time)), end: minutesOf(toTime(row.end_time)) })
+      bookedByResource.set(row.resource_id, list)
+    })
 
     const times = makeTimes(OPEN_TIME, CLOSE_TIME)
     const now = new Date()
@@ -230,8 +233,11 @@ export async function GET(req: Request) {
       times.forEach((start) => {
         const startMinutes = minutesOf(start)
         const end = timeFromMinutes(startMinutes + GRANULARITY)
+        const endMinutes = minutesOf(end)
         const fromAvailability = availabilityMap.get(`${resource.id}_${start}`)
-        const isBooked = bookedSet.has(`${resource.id}_${start}_${end}`)
+        const isBooked = (bookedByResource.get(resource.id) || []).some(
+          (interval) => startMinutes < interval.end && endMinutes > interval.start
+        )
         const isPast = isToday && startMinutes <= nowMinutes
 
         let available = false
@@ -263,7 +269,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ...base, slots })
   } catch (error) {
     console.error('Slots API error:', error)
-    return jsonError(500, 'Nepodarilo sa načítať dostupné sloty')
+    return jsonError(500, 'Failed to load available slots')
   }
 }
 

@@ -4,22 +4,25 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Check, Eye, Search, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/Button'
+import { AnimatedSelect } from '@/components/ui/AnimatedSelect'
+import { useI18n } from '@/components/layout/LanguageProvider'
 import { supabase } from '@/lib/supabaseClient'
-import { type Booking, type Service } from '@/lib/types'
+import { type Booking, type Resource, type Service } from '@/lib/types'
 import { formatDateLocale, normalizeCategory } from '@/lib/utils/validation'
 
 interface AdminBookingsTableProps {
   bookings: Booking[]
   services: Service[]
+  resources: Resource[]
   onRefresh: () => void
 }
 
 type QuickFilter = 'all' | 'today' | 'tomorrow' | 'week' | 'trainings' | 'courts'
 
 function statusBadge(status: Booking['status']) {
-  if (status === 'confirmed') return 'bg-blue-100 text-blue-800 ring-1 ring-blue-200'
-  if (status === 'pending') return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200'
-  return 'bg-black/10 text-slate-700 ring-1 ring-slate-200'
+  if (status === 'confirmed') return 'badge-success'
+  if (status === 'pending') return 'badge-warning'
+  return 'badge-danger'
 }
 
 function isoDateOffset(days: number) {
@@ -28,7 +31,13 @@ function isoDateOffset(days: number) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 
-export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBookingsTableProps) {
+function minutesOf(time: string) {
+  const [h, m] = time.slice(0, 5).split(':').map(Number)
+  return h * 60 + m
+}
+
+export function AdminBookingsTable({ bookings, services, resources, onRefresh }: AdminBookingsTableProps) {
+  const { tr, trList } = useI18n()
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [query, setQuery] = useState('')
@@ -41,6 +50,7 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
   const [noteDraft, setNoteDraft] = useState('')
 
   const serviceById = useMemo(() => new Map(services.map((service) => [service.id, service])), [services])
+  const resourceById = useMemo(() => new Map(resources.map((resource) => [resource.id, resource])), [resources])
 
   const filtered = useMemo(() => {
     const todayIso = isoDateOffset(0)
@@ -83,26 +93,40 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
     bookings.forEach((booking) => {
       if (booking.resource_id) set.add(booking.resource_id)
     })
-    return Array.from(set)
-  }, [bookings])
+    return resources.filter((resource) => set.has(resource.id))
+  }, [bookings, resources])
 
   const conflictIds = useMemo(() => {
-    const byKey = new Map<string, Booking[]>()
+    const conflicts = new Set<string>()
+
+    const byResourceDay = new Map<string, Booking[]>()
     bookings
-      .filter((booking) => booking.status !== 'cancelled')
+      .filter((booking) => booking.status !== 'cancelled' && booking.resource_id)
       .forEach((booking) => {
-        const key = `${booking.date}_${booking.start_time}_${booking.end_time}_${booking.resource_id || 'none'}`
-        const list = byKey.get(key) || []
+        const key = `${booking.resource_id}_${booking.date}`
+        const list = byResourceDay.get(key) || []
         list.push(booking)
-        byKey.set(key, list)
+        byResourceDay.set(key, list)
       })
 
-    const conflicts = new Set<string>()
-    byKey.forEach((list) => {
-      if (list.length > 1) {
-        list.forEach((item) => conflicts.add(item.id))
+    byResourceDay.forEach((list) => {
+      const sorted = [...list].sort((a, b) => (a.start_time > b.start_time ? 1 : -1))
+      for (let i = 0; i < sorted.length; i += 1) {
+        for (let j = i + 1; j < sorted.length; j += 1) {
+          const left = sorted[i]
+          const right = sorted[j]
+          const overlaps =
+            minutesOf(left.start_time) < minutesOf(right.end_time) &&
+            minutesOf(left.end_time) > minutesOf(right.start_time)
+
+          if (overlaps) {
+            conflicts.add(left.id)
+            conflicts.add(right.id)
+          }
+        }
       }
     })
+
     return conflicts
   }, [bookings])
 
@@ -170,14 +194,14 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
   function exportCsv() {
     const header = ['id', 'meno', 'email', 'telefon', 'sluzba', 'zdroj', 'datum', 'start', 'end', 'status']
     const rows = filtered.map((booking) => {
-      const service = serviceById.get(booking.service_id)?.name || 'Služba'
+      const service = serviceById.get(booking.service_id)?.name || tr('bookingDetails.defaultService')
       return [
         booking.id,
         booking.customer_name,
         booking.customer_email || '',
         booking.customer_phone || '',
         service,
-        booking.resource_id || '',
+        booking.resource_id ? resourceById.get(booking.resource_id)?.name || booking.resource_id : '',
         booking.date,
         booking.start_time,
         booking.end_time,
@@ -190,7 +214,7 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `rezervacie-${new Date().toISOString().slice(0, 10)}.csv`
+    link.download = `bookings-${new Date().toISOString().slice(0, 10)}.csv`
     document.body.appendChild(link)
     link.click()
     link.remove()
@@ -208,15 +232,15 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
       })
       const payload = await readJsonSafe(res)
       if (!res.ok) {
-        toast.error(payload?.error || 'Nepodarilo sa zmeniť status')
+        toast.error(payload?.error || 'Failed to change status')
         return
       }
-      toast.success(status === 'confirmed' ? 'Rezervácia potvrdená' : 'Rezervácia zrušená')
+      toast.success(status === 'confirmed' ? tr('adminTable.confirmedStatus') : tr('adminTable.cancelledStatus'))
       logActivity(`Status rezervácie ${bookingId}: ${status}`)
       onRefresh()
     } catch (error) {
       console.error('Status update error:', error)
-      toast.error('Nepodarilo sa zmeniť status rezervácie')
+      toast.error('Failed to change booking status')
     } finally {
       setActionLoading(null)
     }
@@ -241,9 +265,9 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
 
       const successCount = results.filter(Boolean).length
       if (successCount === selectedIds.length) {
-        toast.success(`Aktualizovaných rezervácií: ${successCount}`)
+        toast.success(`Updated bookings: ${successCount}`)
       } else {
-        toast.error(`Aktualizovaných ${successCount} z ${selectedIds.length} rezervácií`)
+        toast.error(`Updated ${successCount} / ${selectedIds.length} bookings`)
       }
 
       logActivity(`Hromadná akcia: ${status} (${successCount})`)
@@ -251,14 +275,14 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
       onRefresh()
     } catch (error) {
       console.error('Bulk status update error:', error)
-      toast.error('Nepodarilo sa vykonať hromadnú akciu')
+      toast.error('Failed to execute bulk action')
     } finally {
       setActionLoading(null)
     }
   }
 
   async function deleteBooking(bookingId: string) {
-    if (!window.confirm('Naozaj chcete vymazať rezerváciu?')) return
+    if (!window.confirm('Delete booking permanently?')) return
 
     try {
       setActionLoading(bookingId)
@@ -270,15 +294,15 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
       })
       const payload = await readJsonSafe(res)
       if (!res.ok) {
-        toast.error(payload?.error || 'Nepodarilo sa vymazať rezerváciu')
+        toast.error(payload?.error || 'Failed to delete booking')
         return
       }
-      toast.success('Rezervácia bola vymazaná')
+      toast.success('Booking deleted')
       logActivity(`Vymazaná rezervácia ${bookingId}`)
       onRefresh()
     } catch (error) {
       console.error('Delete booking error:', error)
-      toast.error('Nepodarilo sa vymazať rezerváciu')
+      toast.error('Failed to delete booking')
     } finally {
       setActionLoading(null)
     }
@@ -290,60 +314,59 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
 
   return (
     <section className="card overflow-hidden">
-      <div className="border-b border-slate-200 bg-slate-50 p-4">
+      <div className="border-b border-slate-200 bg-slate-50/80 p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <label className="relative md:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Vyhľadať podľa mena, emailu alebo telefónu"
+              placeholder={tr('adminTable.searchPlaceholder')}
               className="control-soft w-full rounded-xl py-2 pl-9 pr-3 text-sm"
             />
           </label>
 
-          <select
+          <AnimatedSelect
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as 'all' | Booking['status'])}
-            className="control-soft select-soft rounded-xl px-3 py-2 text-sm"
-          >
-            <option value="all">Všetky statusy</option>
-            <option value="pending">Čakajúce</option>
-            <option value="confirmed">Potvrdené</option>
-            <option value="cancelled">Zrušené</option>
-          </select>
+            onChange={(nextValue) => setStatusFilter(nextValue as 'all' | Booking['status'])}
+            options={[
+              { value: 'all', label: tr('adminTable.allStatuses') },
+              { value: 'pending', label: tr('adminTable.pendingStatus') },
+              { value: 'confirmed', label: tr('adminTable.confirmedStatus') },
+              { value: 'cancelled', label: tr('adminTable.cancelledStatus') },
+            ]}
+            buttonClassName="rounded-xl px-3 py-2 text-sm"
+          />
 
-          <select
+          <AnimatedSelect
             value={serviceFilter}
-            onChange={(e) => setServiceFilter(e.target.value)}
-            className="control-soft select-soft rounded-xl px-3 py-2 text-sm"
-          >
-            <option value="all">Všetky služby</option>
-            {services.map((service) => (
-              <option key={service.id} value={service.id}>{service.name}</option>
-            ))}
-          </select>
+            onChange={setServiceFilter}
+            options={[
+              { value: 'all', label: tr('adminTable.allServices') },
+              ...services.map((service) => ({ value: service.id, label: service.name })),
+            ]}
+            buttonClassName="rounded-xl px-3 py-2 text-sm"
+          />
 
-          <select
+          <AnimatedSelect
             value={resourceFilter}
-            onChange={(e) => setResourceFilter(e.target.value)}
-            className="control-soft select-soft rounded-xl px-3 py-2 text-sm"
-          >
-            <option value="all">Všetky zdroje</option>
-            {uniqueResources.map((resourceId) => (
-              <option key={resourceId} value={resourceId}>{resourceId}</option>
-            ))}
-          </select>
+            onChange={setResourceFilter}
+            options={[
+              { value: 'all', label: tr('adminTable.allResources') },
+              ...uniqueResources.map((resource) => ({ value: resource.id, label: resource.name })),
+            ]}
+            buttonClassName="rounded-xl px-3 py-2 text-sm"
+          />
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
           {[
-            { key: 'all', label: 'Všetko' },
-            { key: 'today', label: 'Dnes' },
-            { key: 'tomorrow', label: 'Zajtra' },
-            { key: 'week', label: 'Tento týždeň' },
-            { key: 'trainings', label: 'Iba tréningy' },
-            { key: 'courts', label: 'Iba kurty' },
+            { key: 'all', label: tr('adminTable.chips.all') },
+            { key: 'today', label: tr('adminTable.chips.today') },
+            { key: 'tomorrow', label: tr('adminTable.chips.tomorrow') },
+            { key: 'week', label: tr('adminTable.chips.week') },
+            { key: 'trainings', label: tr('adminTable.chips.trainings') },
+            { key: 'courts', label: tr('adminTable.chips.courts') },
           ].map((chip) => (
             <button
               key={chip.key}
@@ -363,22 +386,22 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <span className="text-xs text-slate-500">Zobrazených rezervácií: {filtered.length}</span>
+          <span className="text-xs text-slate-500">{tr('adminTable.shownBookings', { count: filtered.length })}</span>
           <Button size="sm" variant="secondary" onClick={exportCsv}>
-            Export CSV
+            {tr('adminTable.exportCsv')}
           </Button>
         </div>
 
         {selectedIds.length > 0 ? (
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 p-2.5">
-            <span className="text-xs font-semibold text-blue-700">Vybraných rezervácií: {selectedIds.length}</span>
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-blue-200 bg-blue-50/80 p-2.5">
+            <span className="text-xs font-semibold text-blue-700">{tr('adminTable.selectedBookings', { count: selectedIds.length })}</span>
             <Button
               size="sm"
               variant="secondary"
               onClick={() => bulkUpdateStatus('confirmed')}
               isLoading={actionLoading === 'bulk'}
             >
-              Potvrdiť vybrané
+              {tr('adminTable.confirmSelected')}
             </Button>
             <Button
               size="sm"
@@ -386,10 +409,10 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
               onClick={() => bulkUpdateStatus('cancelled')}
               isLoading={actionLoading === 'bulk'}
             >
-              Zrušiť vybrané
+              {tr('adminTable.cancelSelected')}
             </Button>
             <Button size="sm" variant="secondary" onClick={() => setSelectedIds([])}>
-              Zrušiť výber
+              {tr('adminTable.clearSelection')}
             </Button>
           </div>
         ) : null}
@@ -410,10 +433,10 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                       setSelectedIds([])
                     }
                   }}
-                  aria-label="Vybrať všetky"
+                  aria-label={tr('adminTable.selectAll')}
                 />
               </th>
-              {['Meno', 'Služba', 'Zdroj', 'Dátum', 'Čas', 'Status', 'Akcie'].map((col) => (
+              {trList('adminTable.columns').map((col) => (
                 <th key={col} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   {col}
                 </th>
@@ -427,7 +450,7 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                 <Fragment key={booking.id}>
                   <tr
                     id={`booking-row-${booking.id}`}
-                    className="transition-colors duration-150 hover:bg-slate-50"
+                    className="transition-colors duration-200 hover:bg-slate-50/85"
                   >
                     <td className="px-4 py-3 text-sm">
                       <input
@@ -440,23 +463,29 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                             setSelectedIds((prev) => prev.filter((id) => id !== booking.id))
                           }
                         }}
-                        aria-label={`Vybrať rezerváciu ${booking.customer_name}`}
+                        aria-label={`Select booking ${booking.customer_name}`}
                       />
                     </td>
                     <td className="px-4 py-3 text-sm font-semibold text-slate-900">{booking.customer_name}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{service?.name || 'Služba'}</td>
-                    <td className="px-4 py-3 text-sm text-slate-700">{booking.resource_id || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700">{service?.name || tr('bookingDetails.defaultService')}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700">
+                      {booking.resource_id ? resourceById.get(booking.resource_id)?.name || booking.resource_id : '—'}
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-700">{formatDateLocale(booking.date)}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">
                       {booking.start_time.slice(0, 5)} – {booking.end_time.slice(0, 5)}
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge(booking.status)}`}>
-                        {booking.status === 'pending' ? 'Čakajúca' : booking.status === 'confirmed' ? 'Potvrdená' : 'Zrušená'}
+                        {booking.status === 'pending'
+                          ? tr('adminTable.pendingStatus')
+                          : booking.status === 'confirmed'
+                            ? tr('adminTable.confirmedStatus')
+                            : tr('adminTable.cancelledStatus')}
                       </span>
                       {conflictIds.has(booking.id) ? (
                         <span className="ml-2 inline-flex rounded-full border border-slate-300 bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700">
-                          Vyžaduje kontrolu
+                          {tr('adminTable.needsReview')}
                         </span>
                       ) : null}
                     </td>
@@ -470,7 +499,7 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                               onClick={() => updateStatus(booking.id, 'confirmed')}
                               isLoading={actionLoading === booking.id}
                               disabled={actionLoading !== null}
-                              title="Potvrdiť"
+                              title={tr('adminTable.actionConfirm')}
                             >
                               <Check className="h-4 w-4" />
                             </Button>
@@ -480,7 +509,7 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                               onClick={() => updateStatus(booking.id, 'cancelled')}
                               isLoading={actionLoading === booking.id}
                               disabled={actionLoading !== null}
-                              title="Zrušiť"
+                              title={tr('adminTable.actionCancel')}
                             >
                               <X className="h-4 w-4" />
                             </Button>
@@ -492,7 +521,7 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                           variant="secondary"
                           onClick={() => openBookingDetail(booking)}
                           disabled={actionLoading !== null}
-                          title="Detail"
+                          title={tr('adminTable.actionDetail')}
                         >
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -502,7 +531,7 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                           onClick={() => deleteBooking(booking.id)}
                           isLoading={actionLoading === booking.id}
                           disabled={actionLoading !== null}
-                          title="Vymazať"
+                          title={tr('adminTable.actionDelete')}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -515,14 +544,14 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                         <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
                           <div className="flex items-start justify-between gap-3">
                             <div>
-                              <h3 className="text-lg font-bold text-slate-900">Detail rezervácie</h3>
-                              <p className="mt-1 text-sm text-slate-600">Zobrazené pri vybranom zázname.</p>
+                              <h3 className="text-lg font-bold text-slate-900">{tr('adminTable.detailTitle')}</h3>
+                              <p className="mt-1 text-sm text-slate-600">{tr('adminTable.detailHint')}</p>
                             </div>
                             <button
                               type="button"
                               onClick={() => setSelectedBooking(null)}
                               className="rounded-full border border-slate-200 p-1.5 text-slate-600 transition-all duration-200 hover:bg-slate-100"
-                              aria-label="Zavrieť"
+                              aria-label={tr('common.close')}
                             >
                               <X className="h-4 w-4" />
                             </button>
@@ -530,7 +559,12 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
 
                           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                             <p className="font-semibold text-slate-900">{selectedBooking.customer_name}</p>
-                            <p className="mt-1">{serviceById.get(selectedBooking.service_id)?.name || 'Služba'}</p>
+                            <p className="mt-1">{serviceById.get(selectedBooking.service_id)?.name || tr('bookingDetails.defaultService')}</p>
+                            <p className="mt-1">
+                              {selectedBooking.resource_id
+                                ? resourceById.get(selectedBooking.resource_id)?.name || selectedBooking.resource_id
+                                : tr('adminTable.noResource')}
+                            </p>
                             <p className="mt-1">
                               {formatDateLocale(selectedBooking.date)} • {selectedBooking.start_time.slice(0, 5)} –{' '}
                               {selectedBooking.end_time.slice(0, 5)}
@@ -539,21 +573,21 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
 
                           <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-700 sm:grid-cols-2">
                             <p className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                              <span className="font-semibold">Email:</span> {selectedBooking.customer_email || '—'}
+                              <span className="font-semibold">{tr('common.email')}:</span> {selectedBooking.customer_email || '—'}
                             </p>
                             <p className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-                              <span className="font-semibold">Telefón:</span> {selectedBooking.customer_phone || '—'}
+                              <span className="font-semibold">{tr('common.phone')}:</span> {selectedBooking.customer_phone || '—'}
                             </p>
                           </div>
 
                           {selectedBooking.note ? (
                             <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                              <span className="font-semibold">Poznámka:</span> {selectedBooking.note}
+                              <span className="font-semibold">{tr('common.note')}:</span> {selectedBooking.note}
                             </p>
                           ) : null}
 
                           <div className="mt-4">
-                            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">Admin poznámka</label>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500">{tr('adminTable.adminNote')}</label>
                             <textarea
                               value={noteDraft}
                               onChange={(e) => {
@@ -561,8 +595,8 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                                 saveAdminNote(selectedBooking.id, e.target.value)
                               }}
                               rows={3}
-                              className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              placeholder="VIP klient, špeciálne požiadavky…"
+                              className="control-soft w-full rounded-xl px-3 py-2 text-sm"
+                              placeholder={tr('adminTable.adminNotePlaceholder')}
                             />
                           </div>
 
@@ -570,15 +604,15 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
                             {selectedBooking.status === 'pending' ? (
                               <>
                                 <Button onClick={() => updateStatus(selectedBooking.id, 'confirmed')}>
-                                  Potvrdiť rezerváciu
+                                  {tr('adminTable.confirmBooking')}
                                 </Button>
                                 <Button variant="secondary" onClick={() => updateStatus(selectedBooking.id, 'cancelled')}>
-                                  Zrušiť rezerváciu
+                                  {tr('adminTable.cancelBooking')}
                                 </Button>
                               </>
                             ) : null}
                             <Button variant="secondary" onClick={() => setSelectedBooking(null)}>
-                              Zavrieť panel
+                              {tr('adminTable.closePanel')}
                             </Button>
                           </div>
                         </div>
@@ -593,7 +627,11 @@ export function AdminBookingsTable({ bookings, services, onRefresh }: AdminBooki
       </div>
 
       {filtered.length === 0 && (
-        <div className="p-8 text-center text-sm text-slate-600">Žiadne rezervácie pre aktuálny filter.</div>
+        <div className="p-8 text-center">
+          <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-slate-50/80 px-5 py-6 text-sm text-slate-600">
+            {tr('adminTable.noBookings')}
+          </div>
+        </div>
       )}
 
     </section>

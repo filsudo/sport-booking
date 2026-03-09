@@ -14,44 +14,24 @@ import {
   Users,
 } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
+import { useI18n } from '@/components/layout/LanguageProvider'
 import { ReservationGridPreview } from '@/components/home/ReservationGridPreview'
-import { supabase } from '@/lib/supabaseClient'
+import { getSupabaseErrorMessage, isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
 import { Service } from '@/lib/types'
 import { normalizeCategory } from '@/lib/utils/validation'
+import { siteConfig } from '@/lib/config/site'
 
 function Stat({ value, label }: { value: string; label: string }) {
   return (
-    <div className="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/15">
+    <div className="rounded-2xl border border-white/15 bg-white/10 px-4 py-3 backdrop-blur-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/15">
       <div className="text-2xl font-extrabold leading-tight">{value}</div>
-      <div className="text-xs text-blue-100">{label}</div>
+      <div className="text-xs text-blue-50/90">{label}</div>
     </div>
   )
 }
 
-const houseRules = [
-  'Vstup na hraciu plochu len v čistej športovej obuvi s nefarbiacou podrážkou.',
-  'Prosíme prísť 5-10 minút pred začiatkom rezervácie.',
-  'Rezerváciu je možné zrušiť najneskôr 12 hodín vopred (telefonicky/emailom).',
-  'Pri poškodení vybavenia je používateľ povinný okamžite nahlásiť škodu.',
-  'Na hracej ploche je zákaz jedla a sklenených fliaš.',
-]
-
-const faqPreview = [
-  {
-    q: 'Ako rýchlo viem vytvoriť rezerváciu?',
-    a: 'Do pár kliknutí: služba, dátum, čas a potvrdenie údajov.',
-  },
-  {
-    q: 'Môžem si vybrať trénera?',
-    a: 'Áno, pri individuálnom tréningu sa tréner vyberá ako zdroj.',
-  },
-  {
-    q: 'Ako funguje storno?',
-    a: 'Bezplatné storno je možné najneskôr 12 hodín pred termínom.',
-  },
-]
-
 function HomeContent() {
+  const { lang, tr } = useI18n()
   const [services, setServices] = useState<Service[]>([])
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [recentServiceIds, setRecentServiceIds] = useState<string[]>([])
@@ -66,6 +46,12 @@ function HomeContent() {
   useEffect(() => {
     let active = true
 
+    if (!isSupabaseConfigured) {
+      return () => {
+        active = false
+      }
+    }
+
     supabase
       .from('services')
       .select('*')
@@ -74,7 +60,7 @@ function HomeContent() {
       .then(({ data, error }) => {
         if (!active) return
         if (error) {
-          console.error('Home services load error:', error)
+          console.error('Home services load error:', getSupabaseErrorMessage(error, 'Failed to load services'))
           return
         }
         setServices((data || []) as Service[])
@@ -157,10 +143,10 @@ function HomeContent() {
   const highlightedServices = useMemo(() => {
     if (!services.length) {
       return [
-        { name: 'Tenisový kurt', price: 20, category: 'courts' as const },
-        { name: 'Stolný tenis', price: 8, category: 'tables' as const },
-        { name: 'Bedminton', price: 12, category: 'courts' as const },
-        { name: 'Individuálny tréning', price: 35, category: 'trainings' as const },
+        { name: lang === 'sk' ? 'Tenisovy kurt' : 'Tennis court', price: 20, category: 'courts' as const },
+        { name: lang === 'sk' ? 'Stolny tenis' : 'Table tennis', price: 8, category: 'tables' as const },
+        { name: lang === 'sk' ? 'Bedminton' : 'Badminton', price: 12, category: 'courts' as const },
+        { name: lang === 'sk' ? 'Individualny trening' : 'Personal training', price: 35, category: 'trainings' as const },
       ]
     }
 
@@ -169,7 +155,7 @@ function HomeContent() {
       price: service.price,
       category: normalizeCategory(service.name, service.category),
     }))
-  }, [services])
+  }, [lang, services])
 
   const favoriteServices = useMemo(() => {
     if (!favoriteIds.length) return []
@@ -182,37 +168,84 @@ function HomeContent() {
     return recentServiceIds.map((id) => map.get(id)).filter((service): service is Service => Boolean(service)).slice(0, 4)
   }, [services, recentServiceIds])
 
+  const houseRules =
+    lang === 'sk'
+      ? [
+          'Vstup na hraciu plochu len v cistej sportovej obuvi s nefarbiacou podrazkou.',
+          'Prosime prist 5-10 minut pred zaciatkom rezervacie.',
+          'Rezervaciu je mozne zrusit najneskor 12 hodin vopred (telefonicky alebo emailom).',
+          'Pri poskodeni vybavenia je pouzivatel povinny okamzite nahlasit skodu.',
+          'Na hracej ploche je zakaz jedla a sklenenych flias.',
+        ]
+      : [
+          'Access to courts is allowed only with clean sports shoes and non-marking soles.',
+          'Please arrive 5-10 minutes before your reservation starts.',
+          'Booking can be cancelled no later than 12 hours in advance (phone or email).',
+          'If equipment is damaged, customer must report it immediately.',
+          'Food and glass bottles are not allowed on the playing area.',
+        ]
+
+  const faqPreview =
+    lang === 'sk'
+      ? [
+          {
+            q: 'Ako rychlo viem vytvorit rezervaciu?',
+            a: 'Do par kliknuti: sluzba, datum, cas a potvrdenie udajov.',
+          },
+          {
+            q: 'Mozem si vybrat trenera?',
+            a: 'Ano, pri individualnom treningu sa trener vybera ako zdroj.',
+          },
+          {
+            q: 'Ako funguje storno?',
+            a: 'Bezplatne storno je mozne najneskor 12 hodin pred terminom.',
+          },
+        ]
+      : [
+          {
+            q: 'How fast can I create a booking?',
+            a: 'In a few clicks: service, date, time, and confirmation details.',
+          },
+          {
+            q: 'Can I select a trainer?',
+            a: 'Yes, for personal training trainer is selected as a resource.',
+          },
+          {
+            q: 'How does cancellation work?',
+            a: 'Free cancellation is possible no later than 12 hours before start time.',
+          },
+        ]
+
   return (
     <div className="w-full">
       <section className="relative overflow-hidden bg-slate-950 animate-fade-in">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-700 via-blue-700 to-slate-950" />
-        <div className="absolute inset-0 opacity-20 [background-image:radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:26px_26px]" />
+        <div className="absolute inset-0 bg-gradient-to-br from-blue-800 via-blue-700 to-slate-950" />
+        <div className="absolute inset-0 opacity-15 [background-image:radial-gradient(circle_at_1px_1px,white_1px,transparent_0)] [background-size:26px_26px]" />
         <div className="absolute -right-16 top-20 h-48 w-48 rounded-full bg-blue-300/20 blur-3xl" />
 
         <div className="relative mx-auto grid max-w-7xl grid-cols-1 gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-12 lg:items-center lg:px-8">
           <div className="lg:col-span-7">
-            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-sm text-blue-100">
+            <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-sm text-blue-50">
               <Sparkles className="h-4 w-4" />
-              <span>Moderné rezervácie pre športové centrum</span>
+              <span>{tr('home.heroTag')}</span>
             </div>
 
             <h1 className="text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl md:text-6xl">
-              Rezervujte kurt, stôl alebo tréning bez čakania
+              {tr('home.heroTitle')}
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-blue-100/95 sm:text-xl">
-              SportBook zobrazí voľné termíny okamžite. Výber služby, dátumu a času je jednoduchý
-              na mobile aj desktopoch.
+            <p className="mt-6 max-w-2xl text-lg leading-relaxed text-blue-100/90 sm:text-xl">
+              {tr('home.heroDescription')}
             </p>
 
             <div id="cennik" className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
               <Link href="/booking">
-                <Button size="lg" className="w-full animate-fade-in-up animate-pulse-glow sm:w-auto">
-                  Rezervovať
+                <Button size="lg" className="w-full animate-fade-in-up sm:w-auto">
+                  {tr('home.ctaBook')}
                 </Button>
               </Link>
               <Link href="/services">
                 <Button size="lg" variant="secondary" className="w-full animate-fade-in-up stagger-1 sm:w-auto">
-                  Pozrieť služby
+                  {tr('home.ctaServices')}
                 </Button>
               </Link>
               <Button
@@ -221,19 +254,19 @@ function HomeContent() {
                 className="w-full animate-fade-in-up stagger-1 sm:w-auto"
                 onClick={() => window.dispatchEvent(new CustomEvent('open-pricing-modal'))}
               >
-                Cenník
+                {tr('home.ctaPricing')}
               </Button>
             </div>
 
             <div className="mt-10 grid max-w-xl grid-cols-3 gap-3 text-white">
               <div className="animate-float-soft">
-                <Stat value="7 aktivít" label="Športové aktivity" />
+                <Stat value={lang === 'sk' ? '7 aktivit' : '7 activities'} label={tr('home.statActivities')} />
               </div>
               <div className="animate-float-soft [animation-delay:300ms]">
-                <Stat value="12 h" label="Denne otvorené" />
+                <Stat value="12 h" label={tr('home.statHours')} />
               </div>
               <div className="animate-float-soft [animation-delay:600ms]">
-                <Stat value="90 dní" label="Rezervácie dopredu" />
+                <Stat value={lang === 'sk' ? '90 dni' : '90 days'} label={tr('home.statAdvance')} />
               </div>
             </div>
           </div>
@@ -241,8 +274,8 @@ function HomeContent() {
           <div className="lg:col-span-5">
             <div className="card soft-shadow overflow-hidden">
               <div className="border-b border-slate-200 bg-gradient-to-r from-slate-100 to-white p-5">
-                <h2 className="text-sm font-bold text-slate-900">Náhľad rezervačného gridu</h2>
-                <p className="mt-1 text-xs text-slate-600">Riadky = zdroje, stĺpce = hodiny</p>
+                <h2 className="text-sm font-bold text-slate-900">{tr('home.previewTitle')}</h2>
+                <p className="mt-1 text-xs text-slate-600">{tr('home.previewSubtitle')}</p>
               </div>
               <ReservationGridPreview />
             </div>
@@ -254,14 +287,14 @@ function HomeContent() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between reveal" data-reveal>
             <div>
-              <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Ako to funguje</h2>
+              <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">{tr('home.howItWorks')}</h2>
               <p className="mt-2 max-w-2xl text-slate-600">
-                Vyberiete službu, dátum, termín a odošlete rezerváciu.
+                {tr('home.howItWorksSubtitle')}
               </p>
             </div>
             <Link href="/booking">
               <Button variant="secondary">
-                Začať rezerváciu
+                {tr('home.startBooking')}
               </Button>
             </Link>
           </div>
@@ -270,18 +303,27 @@ function HomeContent() {
             {[
               {
                 icon: Calendar,
-                title: 'Výber dátumu',
-                text: 'Kalendár zobrazí dostupné termíny na najbližších 60 dní.',
+                title: lang === 'sk' ? 'Vyber datumu' : 'Select date',
+                text:
+                  lang === 'sk'
+                    ? 'Kalendar zobrazi dostupne terminy na najblizsich 60 dni.'
+                    : 'Calendar shows available slots for the next 60 days.',
               },
               {
                 icon: LayoutGrid,
-                title: 'Výber zdroja',
-                text: 'Grid pre kurty, stoly a trénerov s jasnými stavmi dostupnosti.',
+                title: lang === 'sk' ? 'Vyber zdroja' : 'Select resource',
+                text:
+                  lang === 'sk'
+                    ? 'Grid pre kurty, stoly a trenerov s jasnymi stavmi dostupnosti.'
+                    : 'Grid for courts, tables, and trainers with clear availability states.',
               },
               {
                 icon: ShieldCheck,
-                title: 'Potvrdenie',
-                text: 'Vyplníte údaje, skontrolujete zhrnutie a rezervácia je hotová.',
+                title: lang === 'sk' ? 'Potvrdenie' : 'Confirmation',
+                text:
+                  lang === 'sk'
+                    ? 'Vyplnite udaje, skontrolujete zhrnutie a rezervacia je hotova.'
+                    : 'Fill details, review summary, and submit booking.',
               },
             ].map((item) => (
               <div key={item.title} className="card card-hover reveal p-6" data-reveal>
@@ -299,37 +341,41 @@ function HomeContent() {
       <section id="o-nas" className="page-section bg-slate-100 px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl">
           <div className="mb-6 reveal" data-reveal>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">SportBook centrum</p>
-            <h2 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">O nás</h2>
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-700">{siteConfig.brand.name} center</p>
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">{tr('home.aboutTitle')}</h2>
           </div>
 
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 lg:items-stretch reveal-stagger">
             <article className="card card-hover reveal flex h-full flex-col p-6 sm:p-7 lg:col-span-7" data-reveal>
               <h3 className="text-2xl font-extrabold leading-tight text-slate-900 sm:text-[2rem]">
-                Miesto, kde je šport dostupný bez chaosu
+                {lang === 'sk' ? 'Miesto, kde je sport dostupny bez chaosu' : 'A place where sport is easy to book'}
               </h3>
               <p className="mt-4 text-sm leading-relaxed text-slate-600 sm:text-base">
-                SportBook je športové centrum a rezervačný systém v jednom. Spájame kvalitné zázemie, férový prístup a
-                jednoduché online objednanie termínu, aby ste mohli viac času venovať hre a menej organizácii.
+                {lang === 'sk'
+                  ? 'SportBook je sportove centrum a rezervacny system v jednom. Spajame kvalitne zazemie, ferovy pristup a jednoduche online objednanie terminu.'
+                  : 'SportBook is a sports center and booking system in one. We combine quality facilities, fair rules, and simple online booking.'}
               </p>
-              <p className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-sm leading-relaxed text-slate-700">
-                Začínali sme s cieľom odstrániť zložité telefonické rezervácie. Dnes ponúkame jasný prehľad voľných
-                termínov pre hráčov, trénerov aj kluby.
+              <p className="mt-4 rounded-xl border border-blue-100/80 bg-blue-50/40 px-4 py-3 text-sm leading-relaxed text-slate-700">
+                {lang === 'sk'
+                  ? 'Zacinali sme s cielom odstranit zlozite telefonicke rezervacie. Dnes ponukame jasny prehlad volnych terminov.'
+                  : 'We started with a goal to remove complicated phone booking. Today we provide a clear view of available terms for players and clubs.'}
               </p>
 
               <div className="mt-5 grid gap-3 border-t border-slate-200 pt-5 sm:grid-cols-2">
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Naša vízia</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">{lang === 'sk' ? 'Nasa vizia' : 'Our vision'}</p>
                   <p className="mt-2 text-sm leading-relaxed text-slate-700">
-                    Vytvárať športové prostredie, kde je rezervácia jednoduchá a tréning pravidelný.
+                    {lang === 'sk'
+                      ? 'Vytvarat sportove prostredie, kde je rezervacia jednoducha a trening pravidelny.'
+                      : 'Build a sports environment where booking is simple and training is consistent.'}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">Prečo SportBook</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">{lang === 'sk' ? 'Preco SportBook' : 'Why SportBook'}</p>
                   <ul className="mt-2 space-y-1 text-sm text-slate-700">
-                    <li>• prehľadné termíny bez telefonovania</li>
-                    <li>• férové podmienky a jasné storno pravidlá</li>
-                    <li>• príjemné zázemie pre hráčov aj rodičov</li>
+                    <li>{lang === 'sk' ? '• prehladne terminy bez telefonovania' : '• clear slots without phone calls'}</li>
+                    <li>{lang === 'sk' ? '• ferove podmienky a jasne storno pravidla' : '• fair rules and clear cancellation policy'}</li>
+                    <li>{lang === 'sk' ? '• prijemne zazemie pre hracov aj rodicov' : '• comfortable facility for players and families'}</li>
                   </ul>
                 </div>
               </div>
@@ -341,22 +387,22 @@ function HomeContent() {
                   <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 ring-1 ring-blue-100">
                     <Users className="h-4 w-4 text-blue-700" />
                   </div>
-                  <p className="text-sm font-bold text-slate-900">Komunita a tréneri</p>
-                  <p className="mt-1 text-sm text-slate-600">Priestor pre rekreačných hráčov, amatérov aj kluby.</p>
+                  <p className="text-sm font-bold text-slate-900">{lang === 'sk' ? 'Komunita a treneri' : 'Community and coaches'}</p>
+                  <p className="mt-1 text-sm text-slate-600">{lang === 'sk' ? 'Priestor pre rekreacnych hracov, amaterov aj kluby.' : 'Space for casual players, amateurs, and clubs.'}</p>
                 </div>
                 <div className="card-hover reveal rounded-xl border border-slate-200 bg-white p-4" data-reveal>
                   <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 ring-1 ring-blue-100">
                     <LayoutGrid className="h-4 w-4 text-blue-700" />
                   </div>
-                  <p className="text-sm font-bold text-slate-900">Jednoduchá rezervácia</p>
-                  <p className="mt-1 text-sm text-slate-600">Služba, dátum, čas a potvrdenie za pár kliknutí.</p>
+                  <p className="text-sm font-bold text-slate-900">{lang === 'sk' ? 'Jednoducha rezervacia' : 'Simple booking'}</p>
+                  <p className="mt-1 text-sm text-slate-600">{lang === 'sk' ? 'Sluzba, datum, cas a potvrdenie za par kliknuti.' : 'Service, date, time, and confirmation in a few clicks.'}</p>
                 </div>
                 <div className="card-hover reveal rounded-xl border border-slate-200 bg-white p-4" data-reveal>
                   <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 ring-1 ring-blue-100">
                     <ShieldCheck className="h-4 w-4 text-blue-700" />
                   </div>
-                  <p className="text-sm font-bold text-slate-900">Komfort v hale</p>
-                  <p className="mt-1 text-sm text-slate-600">Šatne, sprchy a zázemie pre rodičov aj oddych.</p>
+                  <p className="text-sm font-bold text-slate-900">{lang === 'sk' ? 'Komfort v hale' : 'Comfort in venue'}</p>
+                  <p className="mt-1 text-sm text-slate-600">{lang === 'sk' ? 'Satne, sprchy a zazemie pre rodicov aj oddych.' : 'Changing rooms, showers, and lounge area.'}</p>
                 </div>
               </div>
             </aside>
@@ -367,9 +413,9 @@ function HomeContent() {
       <section className="page-section bg-white px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <div className="mb-10 flex items-end justify-between reveal" data-reveal>
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Aktivity centra</h2>
+            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">{tr('home.activitiesTitle')}</h2>
             <Link href="/services" className="text-sm font-bold text-blue-700 hover:text-blue-800">
-              Zobraziť všetko
+              {tr('home.viewAll')}
             </Link>
           </div>
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4 reveal-stagger">
@@ -394,9 +440,9 @@ function HomeContent() {
                   </div>
                   <h3 className="font-bold text-slate-900">{service.name}</h3>
                   <p className="mt-2 text-sm text-slate-600">
-                    60 min slot • šatne • sprchy
+                    {lang === 'sk' ? '60 min slot • satne • sprchy' : '60 min slot • locker rooms • showers'}
                   </p>
-                  <p className="mt-3 text-lg font-extrabold text-blue-700">Od {service.price.toFixed(2)} €</p>
+                  <p className="mt-3 text-lg font-extrabold text-blue-700">{tr('servicesPage.fromPrice')} {service.price.toFixed(2)} EUR</p>
                 </div>
               )
             })}
@@ -408,18 +454,18 @@ function HomeContent() {
         <section className="page-section bg-slate-100 px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
             <h2 className="mb-8 text-3xl font-extrabold tracking-tight sm:text-4xl reveal" data-reveal>
-              Vaše obľúbené služby
+              {tr('home.favoritesTitle')}
             </h2>
             <div className="grid grid-cols-1 gap-5 md:grid-cols-3 reveal-stagger">
               {favoriteServices.map((service) => (
                 <div key={service.id} className="card card-hover reveal p-5" data-reveal>
-                  <p className="text-sm font-semibold text-blue-700">⭐ Obľúbené</p>
+                  <p className="text-sm font-semibold text-blue-700">⭐ {tr('home.favoriteBadge')}</p>
                   <h3 className="mt-2 text-lg font-bold text-slate-900">{service.name}</h3>
-                  <p className="mt-1 text-sm text-slate-600">{service.description || 'Rezervujte si termín online.'}</p>
+                  <p className="mt-1 text-sm text-slate-600">{service.description || (lang === 'sk' ? 'Rezervujte si termin online.' : 'Book your slot online.')}</p>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-700">Od {service.price.toFixed(2)} €</span>
+                    <span className="text-sm font-semibold text-slate-700">{tr('servicesPage.fromPrice')} {service.price.toFixed(2)} EUR</span>
                     <Link href={`/booking?serviceId=${service.id}`}>
-                      <Button size="sm" variant="secondary">Rezervovať</Button>
+                      <Button size="sm" variant="secondary">{tr('servicesPage.book')}</Button>
                     </Link>
                   </div>
                 </div>
@@ -433,7 +479,7 @@ function HomeContent() {
         <section className="page-section px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
             <div className="card reveal p-6" data-reveal>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Posledný výber</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{tr('home.lastSelection')}</p>
               <h3 className="mt-2 text-xl font-bold text-slate-900">{lastSelection.serviceName}</h3>
               <p className="mt-1 text-sm text-slate-600">
                 {lastSelection.resourceName ? `${lastSelection.resourceName} • ` : ''}{lastSelection.date || ''}{' '}
@@ -441,7 +487,7 @@ function HomeContent() {
               </p>
               <div className="mt-4">
                 <Link href={`/booking?serviceId=${lastSelection.serviceId}`}>
-                  <Button variant="secondary">Pokračovať</Button>
+                  <Button variant="secondary">{tr('home.continueLast')}</Button>
                 </Link>
               </div>
             </div>
@@ -453,17 +499,17 @@ function HomeContent() {
         <section className="page-section bg-slate-100 px-4 sm:px-6 lg:px-8">
           <div className="mx-auto max-w-7xl">
             <h2 className="mb-8 text-3xl font-extrabold tracking-tight sm:text-4xl reveal" data-reveal>
-              Nedávno prezerané
+              {tr('home.recentlyViewed')}
             </h2>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
               {recentServices.map((service) => (
                 <div key={service.id} className="card card-hover reveal p-4" data-reveal>
                   <p className="text-sm font-semibold text-slate-900">{service.name}</p>
-                  <p className="mt-1 text-xs text-slate-600">{service.description || 'Online rezervácia dostupná okamžite.'}</p>
+                  <p className="mt-1 text-xs text-slate-600">{service.description || (lang === 'sk' ? 'Online rezervacia dostupna okamzite.' : 'Online booking available instantly.')}</p>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-blue-700">Od {service.price.toFixed(2)} €</span>
+                    <span className="text-sm font-semibold text-blue-700">{tr('servicesPage.fromPrice')} {service.price.toFixed(2)} EUR</span>
                     <Link href={`/booking?serviceId=${service.id}`}>
-                      <Button size="sm" variant="secondary">Otvoriť</Button>
+                      <Button size="sm" variant="secondary">{tr('home.open')}</Button>
                     </Link>
                   </div>
                 </div>
@@ -476,7 +522,7 @@ function HomeContent() {
       <section className="page-section px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
           <h2 className="mb-8 text-3xl font-extrabold tracking-tight sm:text-4xl reveal" data-reveal>
-            Pravidlá prevádzky
+            {tr('home.houseRules')}
           </h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 reveal-stagger">
             {houseRules.map((rule) => (
@@ -503,7 +549,7 @@ function HomeContent() {
           </div>
           <div className="mt-6 reveal" data-reveal>
             <Link href="/faq">
-              <Button variant="secondary">Všetky otázky a odpovede</Button>
+              <Button variant="secondary">{tr('home.allFaq')}</Button>
             </Link>
           </div>
         </div>
@@ -512,59 +558,61 @@ function HomeContent() {
       <section className="page-section px-4 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl grid grid-cols-1 gap-6 lg:grid-cols-2">
           <div className="card reveal p-6" data-reveal>
-            <h2 className="text-2xl font-bold text-slate-900">Kontakt a lokalita</h2>
+            <h2 className="text-2xl font-bold text-slate-900">{tr('home.contactAndLocation')}</h2>
             <div className="mt-4 space-y-3 text-sm text-slate-700">
               <p className="flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-blue-700" />
-                Športová 12, Bratislava
+                {siteConfig.contact.address}
               </p>
               <p className="flex items-center gap-2">
                 <Users className="h-4 w-4 text-blue-700" />
-                +421 2 xxxx xxxx
+                {siteConfig.contact.phone}
               </p>
               <p className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-blue-700" />
-                info@sportbook.sk
+                {siteConfig.contact.email}
               </p>
               <p className="pt-1 text-slate-600">
-                Dostanete sa k nám MHD aj autom, parkovanie je dostupné pri hale.
+                {lang === 'sk'
+                  ? 'Dostanete sa k nam MHD aj autom, parkovanie je dostupne pri hale.'
+                  : 'You can reach us by public transport or car; parking is available near the venue.'}
               </p>
             </div>
           </div>
           <div className="card reveal p-6" data-reveal>
-            <h2 className="text-2xl font-bold text-slate-900">Služby centra</h2>
+            <h2 className="text-2xl font-bold text-slate-900">{tr('home.centerServices')}</h2>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 text-sm reveal-stagger">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 reveal" data-reveal>
-                <p className="font-semibold text-slate-900">Bar / občerstvenie</p>
-                <p className="mt-1 text-slate-600">Káva, nápoje a drobné snacky.</p>
+                <p className="font-semibold text-slate-900">{lang === 'sk' ? 'Bar / obcerstvenie' : 'Bar / snacks'}</p>
+                <p className="mt-1 text-slate-600">{lang === 'sk' ? 'Kava, napoje a drobne snacky.' : 'Coffee, drinks, and quick snacks.'}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 reveal" data-reveal>
-                <p className="font-semibold text-slate-900">Turnaje a eventy</p>
-                <p className="mt-1 text-slate-600">Pravidelné amatérske turnaje.</p>
+                <p className="font-semibold text-slate-900">{lang === 'sk' ? 'Turnaje a eventy' : 'Tournaments and events'}</p>
+                <p className="mt-1 text-slate-600">{lang === 'sk' ? 'Pravidelne amaterske turnaje.' : 'Regular amateur tournaments.'}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 reveal" data-reveal>
-                <p className="font-semibold text-slate-900">Firemné akcie</p>
-                <p className="mt-1 text-slate-600">Prenájom priestorov pre firmy.</p>
+                <p className="font-semibold text-slate-900">{lang === 'sk' ? 'Firemne akcie' : 'Corporate events'}</p>
+                <p className="mt-1 text-slate-600">{lang === 'sk' ? 'Prenajom priestorov pre firmy.' : 'Venue rental for companies.'}</p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 reveal" data-reveal>
-                <p className="font-semibold text-slate-900">Prenájom vybavenia</p>
-                <p className="mt-1 text-slate-600">Rakety a loptičky na mieste.</p>
+                <p className="font-semibold text-slate-900">{lang === 'sk' ? 'Prenajom vybavenia' : 'Equipment rental'}</p>
+                <p className="mt-1 text-slate-600">{lang === 'sk' ? 'Rakety a lopticky na mieste.' : 'Rackets and balls available on site.'}</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="page-section bg-gradient-to-r from-blue-700 to-blue-900 px-4 text-white sm:px-6 lg:px-8">
+      <section className="page-section bg-gradient-to-r from-blue-700 to-blue-800 px-4 text-white sm:px-6 lg:px-8">
         <div className="mx-auto max-w-3xl text-center reveal" data-reveal>
-          <h2 className="text-3xl font-extrabold sm:text-4xl">Pripravení rezervovať?</h2>
+          <h2 className="text-3xl font-extrabold sm:text-4xl">{tr('home.finalTitle')}</h2>
           <p className="mt-4 text-lg text-blue-100">
-            Dostupné sloty pre kurty, stoly aj trénerov zobrazujeme okamžite.
+            {tr('home.finalSubtitle')}
           </p>
           <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
             <Link href="/booking">
               <Button size="lg" variant="secondary" className="w-full sm:w-auto">
-                Rezervovať
+                {tr('home.ctaBook')}
               </Button>
             </Link>
           </div>

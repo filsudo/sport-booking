@@ -1,15 +1,20 @@
 ﻿@import "tailwindcss";
 
 :root {
-  --background: #f8fafc;
+  --background: #f5f7fb;
   --foreground: #0f172a;
+  --surface: #ffffff;
+  --surface-muted: #f8fafd;
+  --border-soft: rgba(148, 163, 184, 0.22);
+  --shadow-card: 0 10px 28px rgba(15, 23, 42, 0.055);
+  --shadow-card-hover: 0 14px 32px rgba(15, 23, 42, 0.085);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-manrope);
+  --font-mono: var(--font-jetbrains-mono);
 }
 
 * {
@@ -26,7 +31,7 @@ body {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-manrope), "Avenir Next", "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -58,39 +63,39 @@ body {
 }
 
 .page-section {
-  padding-top: 4rem;
-  padding-bottom: 4rem;
+  padding-top: 4.5rem;
+  padding-bottom: 4.5rem;
 }
 
 .card {
-  border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: #ffffff;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  border-radius: 1.1rem;
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 .soft-shadow {
-  box-shadow: 0 12px 40px rgba(2, 6, 23, 0.18);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.14);
 }
 
 .card-hover {
-  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
+  transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background-color 180ms ease;
 }
 
 .card-hover:hover {
-  transform: translateY(-3px);
-  border-color: rgba(59, 130, 246, 0.35);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.11);
+  transform: translateY(-2px);
+  border-color: rgba(59, 130, 246, 0.3);
+  box-shadow: var(--shadow-card-hover);
 }
 
 .choice-pill {
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background-color 160ms ease, color 160ms ease;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease, background-color 200ms ease, color 200ms ease;
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.06);
 }
 
 .choice-pill:hover {
   transform: translateY(-1px);
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 7px 16px rgba(15, 23, 42, 0.1);
 }
 
 .choice-pill:active {
@@ -98,26 +103,27 @@ body {
 }
 
 .choice-pill[data-active="true"] {
-  box-shadow: 0 10px 20px rgba(37, 99, 235, 0.28);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
 }
 
 .control-soft {
-  border: 1px solid rgba(148, 163, 184, 0.45);
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafd 100%);
   color: #0f172a;
-  transition: border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease, transform 160ms ease;
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+  transition: border-color 200ms ease, box-shadow 200ms ease, background-color 200ms ease, transform 200ms ease;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
 .control-soft:hover {
-  border-color: rgba(96, 165, 250, 0.7);
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.11);
+  transform: translateY(-1px);
+  border-color: rgba(96, 165, 250, 0.58);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.1);
 }
 
 .control-soft:focus-visible,
 .control-soft:focus {
-  border-color: rgba(37, 99, 235, 0.8);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.16), 0 10px 24px rgba(15, 23, 42, 0.12);
+  border-color: rgba(37, 99, 235, 0.72);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14), 0 8px 20px rgba(15, 23, 42, 0.11);
   outline: none;
 }
 
@@ -125,11 +131,17 @@ body {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
+  cursor: pointer;
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease, background-color 200ms ease;
   padding-right: 2.25rem;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 20 20' fill='none'%3E%3Cpath d='M5 7.5L10 12.5L15 7.5' stroke='%231d4ed8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
   background-size: 0.9rem;
+}
+
+.select-soft:hover {
+  transform: translateY(-1px);
 }
 
 .select-soft:focus {
@@ -174,7 +186,7 @@ body {
 }
 
 .animate-pulse-glow {
-  animation: pulseGlow 2.4s ease-in-out infinite;
+  animation: pulseGlow 3s ease-in-out infinite;
 }
 
 .animate-float-soft {
@@ -183,6 +195,10 @@ body {
 
 .animate-filter-swap {
   animation: filterSwap 320ms ease both;
+}
+
+.animate-select-in {
+  animation: selectIn 180ms ease both;
 }
 
 .animate-section-in {
@@ -200,9 +216,33 @@ body {
 .calendar-shell {
   width: fit-content;
   border-radius: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafd 100%);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
+}
+
+.badge-neutral {
   border: 1px solid rgba(148, 163, 184, 0.34);
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  background: #f8fafc;
+  color: #475569;
+}
+
+.badge-success {
+  border: 1px solid rgba(37, 99, 235, 0.26);
+  background: #eaf2ff;
+  color: #1d4ed8;
+}
+
+.badge-warning {
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  background: #eff6ff;
+  color: #1e40af;
+}
+
+.badge-danger {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: #f1f5f9;
+  color: #475569;
 }
 
 .calendar-shell .rdp-root {
@@ -238,6 +278,31 @@ body {
   background: #93c5fd;
 }
 
+.calendar-shell .rdp-day_button[aria-selected="true"],
+.calendar-shell .rdp-day_selected,
+.calendar-shell .rdp-day_selected:hover,
+.calendar-shell .rdp-day_selected:focus-visible,
+.calendar-shell .rdp-selected .rdp-day_button {
+  border: 1px solid #1d4ed8 !important;
+  background: #2563eb !important;
+  color: #ffffff !important;
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.28);
+}
+
+.calendar-shell .rdp-day_button[aria-selected="true"]:hover,
+.calendar-shell .rdp-selected:hover .rdp-day_button,
+.calendar-shell .rdp-selected .rdp-day_button:hover {
+  border-color: #1e40af !important;
+  background: #1d4ed8 !important;
+  color: #ffffff !important;
+}
+
+.calendar-shell .rdp-day_button:not([aria-selected="true"]):hover {
+  border-color: rgba(59, 130, 246, 0.45) !important;
+  background: rgba(219, 234, 254, 0.85) !important;
+  color: #1d4ed8 !important;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
@@ -261,10 +326,10 @@ body {
 @keyframes pulseGlow {
   0%,
   100% {
-    box-shadow: 0 8px 20px rgba(37, 99, 235, 0.22);
+    box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
   }
   50% {
-    box-shadow: 0 12px 28px rgba(37, 99, 235, 0.35);
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
   }
 }
 
@@ -300,6 +365,17 @@ body {
   }
 }
 
+@keyframes selectIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 @keyframes pageEnter {
   from {
     opacity: 0;
@@ -313,8 +389,8 @@ body {
 
 @media (max-width: 640px) {
   .page-section {
-    padding-top: 3rem;
-    padding-bottom: 3rem;
+    padding-top: 3.25rem;
+    padding-bottom: 3.25rem;
   }
 
   .calendar-shell .rdp-root {

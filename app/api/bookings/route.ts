@@ -1,17 +1,17 @@
-﻿import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { ZodError, z } from 'zod'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
 
 const bookingBodySchema = z.object({
   service_id: z.string().uuid(),
-  resource_id: z.string().uuid().optional().nullable(),
+  resource_id: z.string().uuid(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   start_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
   end_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
   customer_name: z.string().min(2).max(100),
   customer_email: z.string().email().optional().or(z.literal('')),
-  customer_phone: z.string().min(6).max(30).optional().or(z.literal('')),
+  customer_phone: z.string().min(6).max(24).optional().or(z.literal('')),
   note: z.string().max(500).optional(),
 })
 
@@ -36,6 +36,11 @@ function addMinutes(startTime: string, minutes: number) {
   const hh = String(Math.floor(total / 60)).padStart(2, '0')
   const mm = String(total % 60).padStart(2, '0')
   return `${hh}:${mm}:00`
+}
+
+function minutesOf(value: string) {
+  const [h, m] = value.slice(0, 5).split(':').map(Number)
+  return h * 60 + m
 }
 
 function getPublicClient() {
@@ -105,26 +110,51 @@ async function requireAdminSession(request: NextRequest) {
   const effectiveEmail = cookieEmail || bearerEmail
 
   if (!effectiveEmail) {
-    return { ok: false as const, response: jsonError(401, 'Neplatná admin session') }
+    return { ok: false as const, response: jsonError(401, 'Invalid admin session') }
   }
 
   const allowlist = getAdminAllowlist()
   if (allowlist.length > 0 && !allowlist.includes(effectiveEmail)) {
-    return { ok: false as const, response: jsonError(403, 'Nemáte oprávnenie na admin akciu') }
+    return { ok: false as const, response: jsonError(403, 'You are not allowed to perform this admin action') }
+  }
+
+  const adminClient = getAdminClient()
+  if (!adminClient && !cookieEmail) {
+    if (allowlist.length > 0) {
+      return { ok: true as const, supabase }
+    }
+    return {
+      ok: false as const,
+      response: jsonError(500, 'For bearer admin actions set SUPABASE_SERVICE_ROLE_KEY or ADMIN_EMAILS'),
+    }
+  }
+
+  const adminLookupClient = adminClient || supabase
+  const { data: adminRow, error: adminLookupError } = await adminLookupClient
+    .from('admin_users')
+    .select('email')
+    .eq('email', effectiveEmail)
+    .maybeSingle()
+
+  if (adminLookupError) {
+    return { ok: false as const, response: jsonError(500, 'Failed to verify admin access') }
+  }
+  if (!adminRow) {
+    return { ok: false as const, response: jsonError(403, 'You are not allowed to perform this admin action') }
   }
 
   return { ok: true as const, supabase }
 }
 
 async function getAdminWriteClient(request: NextRequest) {
-  const admin = getAdminClient()
-  if (admin) {
-    return admin
-  }
-
   const session = await requireAdminSession(request)
   if (!session.ok) {
     return session.response
+  }
+
+  const admin = getAdminClient()
+  if (admin) {
+    return admin
   }
 
   return session.supabase
@@ -133,7 +163,7 @@ async function getAdminWriteClient(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const supabase = getPublicClient()
   if (!supabase) {
-    return jsonError(500, 'Chýbajú Supabase premenné pre verejné API')
+    return jsonError(500, 'Missing Supabase environment variables for public API')
   }
 
   try {
@@ -142,7 +172,7 @@ export async function POST(request: NextRequest) {
     const hasEmail = Boolean(body.customer_email && body.customer_email.trim().length > 0)
     const hasPhone = Boolean(body.customer_phone && body.customer_phone.trim().length > 0)
     if (!hasEmail && !hasPhone) {
-      return jsonError(400, 'Zadajte aspoň email alebo telefón')
+      return jsonError(400, 'Enter email or phone number')
     }
 
     const { data: service, error: serviceError } = await supabase
@@ -152,14 +182,75 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
 
     if (serviceError) {
-      return jsonError(500, 'Nepodarilo sa načítať službu', { details: serviceError.message })
+      return jsonError(500, 'Failed to load service', { details: serviceError.message })
     }
     if (!service || service.is_active === false) {
-      return jsonError(404, 'Služba nie je dostupná')
+      return jsonError(404, 'Service is not available')
+    }
+
+    const { data: resource, error: resourceError } = await supabase
+      .from('resources')
+      .select('id, service_id, is_active')
+      .eq('id', body.resource_id)
+      .maybeSingle()
+
+    if (resourceError) {
+      return jsonError(500, 'Failed to load resource', { details: resourceError.message })
+    }
+    if (!resource || resource.service_id !== body.service_id || resource.is_active === false) {
+      return jsonError(404, 'Selected resource is not available for this service')
     }
 
     const startTime = normalizeTime(body.start_time)
     const endTime = body.end_time ? normalizeTime(body.end_time) : addMinutes(startTime, Number(service.duration_minutes || 60))
+    if (minutesOf(endTime) <= minutesOf(startTime)) {
+      return jsonError(400, 'End time must be after start time')
+    }
+
+    const now = new Date()
+    const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+      now.getDate()
+    ).padStart(2, '0')}`
+    if (body.date < todayIso) {
+      return jsonError(400, 'Cannot book a past date')
+    }
+    if (body.date === todayIso && minutesOf(startTime) <= now.getHours() * 60 + now.getMinutes()) {
+      return jsonError(400, 'Selected time has already passed')
+    }
+
+    const { data: availabilityRow, error: availabilityError } = await supabase
+      .from('availability')
+      .select('id, is_available')
+      .eq('service_id', body.service_id)
+      .eq('resource_id', body.resource_id)
+      .eq('date', body.date)
+      .eq('start_time', startTime)
+      .maybeSingle()
+
+    if (availabilityError) {
+      return jsonError(500, 'Failed to load availability', { details: availabilityError.message })
+    }
+    if (!availabilityRow || availabilityRow.is_available === false) {
+      return jsonError(409, 'Selected slot is no longer available')
+    }
+
+    const { data: existingBooking, error: conflictError } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('resource_id', body.resource_id)
+      .eq('date', body.date)
+      .lt('start_time', endTime)
+      .gt('end_time', startTime)
+      .in('status', ['pending', 'confirmed'])
+      .limit(1)
+      .maybeSingle()
+
+    if (conflictError) {
+      return jsonError(500, 'Failed to validate booking conflict', { details: conflictError.message })
+    }
+    if (existingBooking) {
+      return jsonError(409, 'Slot is no longer available, choose another one.')
+    }
 
     const bookingId = crypto.randomUUID()
 
@@ -167,31 +258,31 @@ export async function POST(request: NextRequest) {
       {
         id: bookingId,
         service_id: body.service_id,
-        resource_id: body.resource_id || null,
+        resource_id: body.resource_id,
         date: body.date,
         start_time: startTime,
         end_time: endTime,
         customer_name: body.customer_name,
-        customer_email: body.customer_email || null,
-        customer_phone: body.customer_phone || null,
+        customer_email: body.customer_email?.trim() || null,
+        customer_phone: body.customer_phone?.trim() || null,
         note: body.note || null,
         status: 'pending',
       },
     ])
 
     if (insertError) {
-      if (insertError.code === '23505') {
-        return jsonError(409, 'Slot už nie je dostupný, vyberte iný.')
+      if (insertError.code === '23505' || insertError.code === '23P01') {
+        return jsonError(409, 'Slot is no longer available, choose another one.')
       }
-      return jsonError(500, 'Nepodarilo sa vytvoriť rezerváciu', { details: insertError.message })
+      return jsonError(500, 'Failed to create booking', { details: insertError.message })
     }
 
     return NextResponse.json({ id: bookingId }, { status: 201 })
   } catch (error: unknown) {
     if (error instanceof ZodError) {
-      return jsonError(400, error.errors[0]?.message || 'Neplatné údaje')
+      return jsonError(400, error.errors[0]?.message || 'Invalid input')
     }
-    return jsonError(500, 'Neočakávaná chyba pri vytváraní rezervácie')
+    return jsonError(500, 'Unexpected error while creating booking')
   }
 }
 
@@ -208,17 +299,17 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
       if (error.code === '42501') {
-        return jsonError(403, 'Nemáte oprávnenie meniť rezervácie', { details: error.message })
+        return jsonError(403, 'You are not allowed to update bookings', { details: error.message })
       }
-      return jsonError(500, 'Nepodarilo sa zmeniť status rezervácie', { details: error.message })
+      return jsonError(500, 'Failed to update booking status', { details: error.message })
     }
 
     return NextResponse.json({ ok: true })
   } catch (error: unknown) {
     if (error instanceof ZodError) {
-      return jsonError(400, error.errors[0]?.message || 'Neplatné údaje')
+      return jsonError(400, error.errors[0]?.message || 'Invalid input')
     }
-    return jsonError(500, 'Neočakávaná chyba pri aktualizácii rezervácie')
+    return jsonError(500, 'Unexpected error while updating booking')
   }
 }
 
@@ -235,16 +326,16 @@ export async function DELETE(request: NextRequest) {
 
     if (error) {
       if (error.code === '42501') {
-        return jsonError(403, 'Nemáte oprávnenie mazať rezervácie', { details: error.message })
+        return jsonError(403, 'You are not allowed to delete bookings', { details: error.message })
       }
-      return jsonError(500, 'Nepodarilo sa vymazať rezerváciu', { details: error.message })
+      return jsonError(500, 'Failed to delete booking', { details: error.message })
     }
 
     return NextResponse.json({ ok: true })
   } catch (error: unknown) {
     if (error instanceof ZodError) {
-      return jsonError(400, error.errors[0]?.message || 'Neplatné údaje')
+      return jsonError(400, error.errors[0]?.message || 'Invalid input')
     }
-    return jsonError(500, 'Neočakávaná chyba pri mazaní rezervácie')
+    return jsonError(500, 'Unexpected error while deleting booking')
   }
 }

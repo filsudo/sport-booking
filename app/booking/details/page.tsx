@@ -4,38 +4,48 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/Button'
+import { useI18n } from '@/components/layout/LanguageProvider'
 import { supabase } from '@/lib/supabaseClient'
 
-function formatSKPhone(raw: string) {
-  let v = raw.replace(/[^\d+]/g, '')
+function normalizePhoneInput(raw: string) {
+  const MAX_PHONE_DIGITS = 15
+  const cleaned = raw.replace(/[^\d+\s()-]/g, '')
+  if (!cleaned) return ''
 
-  if (v.startsWith('00')) v = '+' + v.slice(2)
-  if (v.startsWith('0')) v = '+421' + v.slice(1)
+  const withPlus = cleaned.trimStart().startsWith('+')
+  let digits = 0
+  let next = withPlus ? '+' : ''
 
-  const digitsOnly = v.replace(/\D/g, '')
-  const hasPlus = v.startsWith('+')
+  for (const char of cleaned) {
+    if (char === '+') continue
 
-  if (!hasPlus) {
-    if (digitsOnly.length === 9) {
-      v = '+421' + digitsOnly
-    } else {
-      v = digitsOnly
+    if (/\d/.test(char)) {
+      if (digits >= MAX_PHONE_DIGITS) continue
+      next += char
+      digits += 1
+      continue
     }
+
+    if (!/[\s()-]/.test(char) || next.length === 0) continue
+    const last = next[next.length - 1]
+    if (last === ' ' || last === '(' || last === '-') continue
+    next += char === '-' ? ' ' : char
   }
 
-  const d = v.replace(/\D/g, '')
-  if (!d.startsWith('421')) return raw
+  return next
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .trim()
+}
 
-  const rest = d.slice(3, 12)
-  const p1 = rest.slice(0, 3)
-  const p2 = rest.slice(3, 6)
-  const p3 = rest.slice(6, 9)
-
-  let out = '+421'
-  if (p1) out += ` ${p1}`
-  if (p2) out += ` ${p2}`
-  if (p3) out += ` ${p3}`
-  return out
+function isValidInternationalPhone(value: string) {
+  const compact = value.replace(/[\s()-]/g, '')
+  if (!compact) return true
+  if (compact.startsWith('+')) {
+    return /^\+\d{6,15}$/.test(compact)
+  }
+  return /^\d{6,15}$/.test(compact)
 }
 
 function normalizeName(value: string) {
@@ -49,7 +59,7 @@ function normalizeName(value: string) {
 
 type Summary = {
   serviceId: string
-  resourceId: string | null
+  resourceId: string
   date: string
   startTime: string
   endTime: string
@@ -57,10 +67,11 @@ type Summary = {
 
 export default function BookingDetailsPage() {
   const router = useRouter()
+  const { lang, tr } = useI18n()
 
   const [summary, setSummary] = useState<Summary | null>(null)
-  const [serviceName, setServiceName] = useState('Služba')
-  const [resourceName, setResourceName] = useState('Zdroj')
+  const [serviceName, setServiceName] = useState(tr('bookingDetails.defaultService'))
+  const [resourceName, setResourceName] = useState(tr('bookingDetails.defaultResource'))
   const [loading, setLoading] = useState(false)
 
   const [formData, setFormData] = useState({
@@ -81,7 +92,7 @@ export default function BookingDetailsPage() {
     const startTime = params.get('startTime') || params.get('time')
     const endTime = params.get('endTime')
 
-    if (!serviceId || !date || !startTime) {
+    if (!serviceId || !resourceId || !date || !startTime) {
       setSummary(null)
       return
     }
@@ -94,6 +105,11 @@ export default function BookingDetailsPage() {
       endTime: endTime || startTime,
     })
   }, [])
+
+  useEffect(() => {
+    setServiceName(tr('bookingDetails.defaultService'))
+    setResourceName(tr('bookingDetails.defaultResource'))
+  }, [tr])
 
   useEffect(() => {
     try {
@@ -121,9 +137,7 @@ export default function BookingDetailsPage() {
     async function loadLabels() {
       const [serviceRes, resourceRes] = await Promise.all([
         supabase.from('services').select('name').eq('id', localSummary.serviceId).maybeSingle(),
-        localSummary.resourceId
-          ? supabase.from('resources').select('name').eq('id', localSummary.resourceId).maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
+        supabase.from('resources').select('name').eq('id', localSummary.resourceId).maybeSingle(),
       ])
 
       if (!active) return
@@ -146,15 +160,19 @@ export default function BookingDetailsPage() {
   function validateForm() {
     const nextErrors: Record<string, string> = {}
     if (!formData.customer_name.trim()) {
-      nextErrors.customer_name = 'Meno je povinné'
+      nextErrors.customer_name = tr('validation.requiredName')
     }
 
     if (!formData.customer_email.trim() && !formData.customer_phone.trim()) {
-      nextErrors.contact = 'Zadajte aspoň email alebo telefón'
+      nextErrors.contact = tr('validation.requiredContact')
     }
 
     if (formData.customer_email.trim() && !/^\S+@\S+\.\S+$/.test(formData.customer_email.trim())) {
-      nextErrors.customer_email = 'Neplatný email'
+      nextErrors.customer_email = tr('validation.invalidEmail')
+    }
+
+    if (formData.customer_phone.trim() && !isValidInternationalPhone(formData.customer_phone.trim())) {
+      nextErrors.customer_phone = tr('validation.invalidPhone')
     }
 
     setErrors(nextErrors)
@@ -188,20 +206,20 @@ export default function BookingDetailsPage() {
 
       const payload = await response.json()
       if (!response.ok) {
-        throw new Error(payload?.error || 'Nepodarilo sa dokončiť rezerváciu')
+        throw new Error(payload?.error || tr('validation.bookingFailed'))
       }
 
       router.push(
         `/booking/success?id=${payload.id}&service=${encodeURIComponent(serviceName)}&serviceId=${encodeURIComponent(
           summary.serviceId
         )}&resource=${encodeURIComponent(resourceName)}&resourceId=${encodeURIComponent(
-          summary.resourceId || ''
+          summary.resourceId
         )}&date=${encodeURIComponent(summary.date)}&start=${encodeURIComponent(
           summary.startTime
         )}&end=${encodeURIComponent(summary.endTime)}`
       )
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Nepodarilo sa dokončiť rezerváciu'
+      const message = error instanceof Error ? error.message : tr('validation.bookingFailed')
       toast.error(message)
     } finally {
       setLoading(false)
@@ -211,25 +229,29 @@ export default function BookingDetailsPage() {
   if (!summary) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6 lg:px-8">
-        <h1 className="text-2xl font-bold text-slate-900">Chýbajú údaje rezervácie</h1>
-        <p className="mt-2 text-slate-600">Vráťte sa na výber termínu a skúste to znova.</p>
+        <h1 className="text-2xl font-bold text-slate-900">{tr('bookingDetails.missingTitle')}</h1>
+        <p className="mt-2 text-slate-600">{tr('bookingDetails.missingText')}</p>
         <div className="mt-6">
-          <Button onClick={() => router.push('/booking')}>Späť na rezerváciu</Button>
+          <Button onClick={() => router.push('/booking')}>{tr('bookingDetails.backToBooking')}</Button>
         </div>
       </div>
     )
   }
 
+  const phonePlaceholder =
+    lang === 'sk' ? tr('bookingDetails.phonePlaceholderSk') : tr('bookingDetails.phonePlaceholder')
+  const phoneHelp = lang === 'sk' ? tr('bookingDetails.phoneHelpSk') : tr('bookingDetails.phoneHelp')
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="card animate-section-in p-6 sm:p-8">
-          <h1 className="text-3xl font-bold text-slate-900">Dokončenie rezervácie</h1>
-          <p className="mt-2 text-slate-600">Skontrolujte zhrnutie a doplňte kontaktné údaje.</p>
+          <h1 className="text-3xl font-bold text-slate-900">{tr('bookingDetails.title')}</h1>
+          <p className="mt-2 text-slate-600">{tr('bookingDetails.subtitle')}</p>
 
           <form onSubmit={handleSubmit} className="mt-6 space-y-5">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Meno *</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">{tr('bookingDetails.fullName')}</label>
               <input
                 type="text"
                 value={formData.customer_name}
@@ -240,15 +262,15 @@ export default function BookingDetailsPage() {
                 onBlur={() => {
                   setFormData((prev) => ({ ...prev, customer_name: normalizeName(prev.customer_name) }))
                 }}
-                className="w-full rounded-xl border border-slate-300 px-4 py-2.5 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Meno a priezvisko"
+                className="control-soft w-full rounded-xl px-4 py-2.5"
+                placeholder={tr('bookingDetails.fullNamePlaceholder')}
               />
               {errors.customer_name && <p className="mt-1 text-xs text-red-600">{errors.customer_name}</p>}
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
+                <label className="mb-2 block text-sm font-medium text-slate-700">{tr('common.email')}</label>
                 <input
                   type="email"
                   value={formData.customer_email}
@@ -256,68 +278,70 @@ export default function BookingDetailsPage() {
                     setFormData((prev) => ({ ...prev, customer_email: e.target.value }))
                     setErrors((prev) => ({ ...prev, customer_email: '', contact: '' }))
                   }}
-                  className="w-full rounded-xl border border-slate-300 px-4 py-2.5 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="meno@email.sk"
+                  className="control-soft w-full rounded-xl px-4 py-2.5"
+                  placeholder={tr('bookingDetails.emailPlaceholder')}
                 />
-                <p className="mt-1 text-xs text-slate-500">Email použijeme na potvrdenie rezervácie.</p>
+                <p className="mt-1 text-xs text-slate-500">{tr('bookingDetails.emailHelp')}</p>
                 {errors.customer_email && <p className="mt-1 text-xs text-red-600">{errors.customer_email}</p>}
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Telefón</label>
+                <label className="mb-2 block text-sm font-medium text-slate-700">{tr('common.phone')}</label>
                 <input
                   type="tel"
                   inputMode="tel"
                   autoComplete="tel"
+                  maxLength={24}
                   value={formData.customer_phone}
                   onChange={(e) => {
-                    const formatted = formatSKPhone(e.target.value)
+                    const formatted = normalizePhoneInput(e.target.value)
                     setFormData((prev) => ({ ...prev, customer_phone: formatted }))
-                    setErrors((prev) => ({ ...prev, contact: '' }))
+                    setErrors((prev) => ({ ...prev, contact: '', customer_phone: '' }))
                   }}
-                  className="w-full rounded-xl border border-slate-300 px-4 py-2.5 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="+421 951 226 498"
+                  className="control-soft w-full rounded-xl px-4 py-2.5"
+                  placeholder={phonePlaceholder}
                 />
-                <p className="mt-1 text-xs text-slate-500">Telefón sa automaticky formátuje.</p>
+                <p className="mt-1 text-xs text-slate-500">{phoneHelp}</p>
+                {errors.customer_phone && <p className="mt-1 text-xs text-red-600">{errors.customer_phone}</p>}
               </div>
             </div>
 
             {errors.contact && <p className="text-xs text-red-600">{errors.contact}</p>}
 
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Poznámka (voliteľné)</label>
+              <label className="mb-2 block text-sm font-medium text-slate-700">{tr('bookingDetails.noteLabel')}</label>
               <textarea
                 value={formData.note}
                 onChange={(e) => setFormData((prev) => ({ ...prev, note: e.target.value }))}
                 rows={4}
-                className="w-full rounded-xl border border-slate-300 px-4 py-2.5 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Doplňujúce informácie k rezervácii"
+                className="control-soft w-full rounded-xl px-4 py-2.5"
+                placeholder={tr('bookingDetails.notePlaceholder')}
               />
             </div>
 
             <div className="flex flex-wrap gap-3">
               <Button variant="secondary" type="button" onClick={() => router.push('/booking')}>
-                Späť
+                {tr('common.back')}
               </Button>
               <Button type="submit" isLoading={loading} disabled={!isValid}>
-                Potvrdiť rezerváciu
+                {tr('bookingDetails.submit')}
               </Button>
             </div>
           </form>
         </div>
 
         <aside className="animate-section-in space-y-4 [animation-delay:80ms]">
-          <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-slate-700">
-            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Zhrnutie rezervácie</p>
-            <p className="mt-3"><span className="font-semibold">Služba:</span> {serviceName}</p>
-            <p><span className="font-semibold">Zdroj:</span> {resourceName}</p>
-            <p><span className="font-semibold">Dátum:</span> {summary.date}</p>
+          <div className="rounded-2xl border border-blue-200 bg-blue-50/80 p-4 text-sm text-slate-700">
+            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">{tr('bookingDetails.summaryTitle')}</p>
+            <p className="mt-3"><span className="font-semibold">{tr('common.service')}:</span> {serviceName}</p>
+            <p><span className="font-semibold">{tr('common.resource')}:</span> {resourceName}</p>
+            <p><span className="font-semibold">{tr('common.date')}:</span> {summary.date}</p>
             <p>
-              <span className="font-semibold">Čas:</span> {summary.startTime.slice(0, 5)} – {summary.endTime.slice(0, 5)}
+              <span className="font-semibold">{tr('common.time')}:</span> {summary.startTime.slice(0, 5)} - {summary.endTime.slice(0, 5)}
             </p>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-600 shadow-sm">
-            Potvrdenie rezervácie odošleme na email alebo telefón. Ak potrebujete zmenu termínu, kontaktujte nás.
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-600 shadow-[0_8px_18px_rgba(15,23,42,0.05)]">
+            {tr('bookingDetails.confirmHint')}
           </div>
         </aside>
       </div>

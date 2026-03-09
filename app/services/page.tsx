@@ -5,18 +5,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Dumbbell, Star, Table2, Trophy, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button } from '@/components/ui/Button'
-import { supabase } from '@/lib/supabaseClient'
+import { useI18n } from '@/components/layout/LanguageProvider'
+import { getSupabaseErrorMessage, isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
 import { type Service, type ServiceCategory } from '@/lib/types'
 import { normalizeCategory } from '@/lib/utils/validation'
 
 type FilterKey = 'all' | ServiceCategory
-
-const FILTERS: Array<{ key: FilterKey; label: string }> = [
-  { key: 'all', label: 'Všetky' },
-  { key: 'courts', label: 'Kurty' },
-  { key: 'tables', label: 'Stoly' },
-  { key: 'trainings', label: 'Tréningy' },
-]
 
 function getServiceIcon(category: ServiceCategory) {
   if (category === 'courts') return Trophy
@@ -26,10 +20,18 @@ function getServiceIcon(category: ServiceCategory) {
 }
 
 export default function ServicesPage() {
+  const { lang, tr } = useI18n()
   const [services, setServices] = useState<Service[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FilterKey>('all')
   const [favoriteIds, setFavoriteIds] = useState<string[]>([])
+
+  const filters: Array<{ key: FilterKey; label: string }> = [
+    { key: 'all', label: tr('servicesPage.filter.all') },
+    { key: 'courts', label: tr('servicesPage.filter.courts') },
+    { key: 'tables', label: tr('servicesPage.filter.tables') },
+    { key: 'trainings', label: tr('servicesPage.filter.trainings') },
+  ]
 
   useEffect(() => {
     let active = true
@@ -37,6 +39,11 @@ export default function ServicesPage() {
     async function loadServices() {
       try {
         setLoading(true)
+        if (!isSupabaseConfigured) {
+          setServices([])
+          return
+        }
+
         const { data, error } = await supabase
           .from('services')
           .select('*')
@@ -47,8 +54,8 @@ export default function ServicesPage() {
         if (!active) return
         setServices((data || []) as Service[])
       } catch (error) {
-        console.error('Services load error:', error)
-        toast.error('Nepodarilo sa načítať služby')
+        console.error('Services load error:', getSupabaseErrorMessage(error, 'Failed to load services'))
+        toast.error(tr('servicesPage.loadError'))
       } finally {
         if (active) setLoading(false)
       }
@@ -58,7 +65,7 @@ export default function ServicesPage() {
     return () => {
       active = false
     }
-  }, [])
+  }, [tr])
 
   useEffect(() => {
     try {
@@ -89,17 +96,16 @@ export default function ServicesPage() {
   }, [services, filter])
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
       <section className="reveal is-visible">
-        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">Služby centra</h1>
+        <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 sm:text-5xl">{tr('servicesPage.title')}</h1>
         <p className="mt-4 max-w-3xl text-lg text-slate-600">
-          Vyber si aktivitu a rezervuj termín online. Každá služba má jasne zobrazenú cenu,
-          dĺžku slotu a typ rezervácie.
+          {tr('servicesPage.subtitle')}
         </p>
       </section>
 
       <section className="mt-8 flex flex-wrap gap-2 reveal is-visible">
-        {FILTERS.map((item) => (
+        {filters.map((item) => (
           <button
             key={item.key}
             type="button"
@@ -108,7 +114,7 @@ export default function ServicesPage() {
             className={
               'choice-pill rounded-xl border px-4 py-2 text-sm font-semibold ' +
               (filter === item.key
-                ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                ? 'border-blue-600 bg-blue-600 text-white shadow-[0_8px_16px_rgba(37,99,235,0.24)]'
                 : 'border-slate-200 bg-white text-slate-700 hover:border-blue-300 hover:text-blue-700')
             }
           >
@@ -131,14 +137,14 @@ export default function ServicesPage() {
         </section>
       ) : filteredServices.length === 0 ? (
         <section className="mt-10 card p-8 text-center">
-          <h2 className="text-xl font-bold text-slate-900">Pre tento filter nemáme služby</h2>
-          <p className="mt-2 text-slate-600">Skús iný filter alebo skontroluj kategórie v databáze.</p>
+          <h2 className="text-xl font-bold text-slate-900">{tr('servicesPage.emptyTitle')}</h2>
+          <p className="mt-2 text-slate-600">{tr('servicesPage.emptyText')}</p>
           <p className="mt-2 text-sm text-slate-500">
-            Tip: Skontroluj kategóriu služby v databáze (`services.category`).
+            {tr('servicesPage.emptyHint')}
           </p>
           <div className="mt-6">
             <Button variant="secondary" onClick={() => setFilter('all')}>
-              Zobraziť všetky služby
+              {tr('servicesPage.showAll')}
             </Button>
           </div>
         </section>
@@ -150,10 +156,10 @@ export default function ServicesPage() {
             const shortDescription =
               service.description ||
               (category === 'trainings'
-                ? '1:1 tréning s trénerom'
+                ? '1:1 training with coach'
                 : category === 'tables'
-                  ? 'Prenájom stola (60 min)'
-                  : 'Prenájom kurtu (60 min)')
+                  ? 'Table rental (60 min)'
+                  : 'Court rental (60 min)')
 
             return (
               <article
@@ -170,8 +176,16 @@ export default function ServicesPage() {
                       type="button"
                       onClick={() => toggleFavorite(service.id)}
                       aria-pressed={favoriteIds.includes(service.id)}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-all hover:border-blue-300 hover:text-blue-700"
-                      title={favoriteIds.includes(service.id) ? 'Odobrať z obľúbených' : 'Pridať do obľúbených'}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition-all duration-200 hover:border-blue-300 hover:text-blue-700"
+                      title={
+                        favoriteIds.includes(service.id)
+                          ? lang === 'sk'
+                            ? 'Odobrat z oblubenych'
+                            : 'Remove from favorites'
+                          : lang === 'sk'
+                            ? 'Pridat do oblubenych'
+                            : 'Add to favorites'
+                      }
                     >
                       <Star className={favoriteIds.includes(service.id) ? 'h-4 w-4 fill-blue-600 text-blue-600' : 'h-4 w-4'} />
                     </button>
@@ -181,19 +195,19 @@ export default function ServicesPage() {
                   </div>
                 </div>
 
-                <h3 className="text-2xl leading-tight font-bold text-slate-900">{service.name}</h3>
+                <h3 className="text-xl leading-tight font-bold text-slate-900">{service.name}</h3>
                 <p className="mt-2 text-sm text-slate-600">
                   {shortDescription}
                 </p>
 
                 <div className="mt-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cena od</p>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{tr('servicesPage.fromPrice')}</p>
                   <p className="text-3xl font-extrabold tracking-tight text-blue-700">{service.price.toFixed(2)} EUR</p>
                 </div>
 
                 <div className="mt-4">
                   <Link href={`/booking?serviceId=${service.id}`}>
-                    <Button className="w-full">Rezervovať</Button>
+                    <Button className="w-full">{tr('servicesPage.book')}</Button>
                   </Link>
                 </div>
               </article>
